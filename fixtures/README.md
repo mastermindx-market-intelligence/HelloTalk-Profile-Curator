@@ -24,6 +24,7 @@ For each fixture, add a sibling JSON manifest when practical:
   "expectedMBTI": "INFJ",
   "expectedAge": 21,
   "expectedScreenKind": "profilePersonalInfo",
+  "expectedVisibleTargetAges": [21],
   "expectedLocationCity": "Shenyang",
   "expectedNearbyCount": 576,
   "notes": "Long hobbies section; requires several vertical scrolls"

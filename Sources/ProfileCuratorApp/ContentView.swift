@@ -18,7 +18,7 @@ struct ContentView: View {
                     showSafetyPreview: model.showSafetyPreview,
                     action: model.previewAction,
                     gesture: model.galleryGesture,
-                    exclusions: model.previewExclusions,
+                    exclusions: model.activePreviewExclusions,
                     calibrationMode: model.calibrationMode,
                     calibrationMarks: model.calibrationMarks,
                     onCalibrationRect: model.addCalibrationMark
@@ -221,6 +221,25 @@ struct ContentView: View {
                 Text(model.galleryGestureStatus)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Button("Propose next visible photo") {
+                    model.proposeNextVisibleCard()
+                }
+                .disabled(model.visibleRecommendationTargets.isEmpty)
+
+                Text(model.visibleCardProposalStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if !model.visibleRecommendationTargets.isEmpty {
+                    LabeledContent(
+                        "Age-anchored photos",
+                        value: model.visibleRecommendationTargets.map { String($0.displayedAge) }.joined(separator: ", ")
+                    )
+                }
+                if !model.dynamicSocialExclusions.isEmpty {
+                    LabeledContent("Dynamic exclusions", value: "\(model.dynamicSocialExclusions.count)")
+                }
 
                 if model.galleryGesture != nil {
                     Button("Arm content-change check") {

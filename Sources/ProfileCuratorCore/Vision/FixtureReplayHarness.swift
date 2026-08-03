@@ -12,6 +12,7 @@ public struct FixtureManifest: Codable, Sendable {
     public let expectedLocationCity: String?
     public let expectedNearbyCount: Int?
     public let expectedScreenKind: DetectedScreenKind?
+    public let expectedVisibleTargetAges: [Int]?
     public let minimumFaces: Int?
     public let notes: String?
 
@@ -25,6 +26,7 @@ public struct FixtureManifest: Codable, Sendable {
         expectedLocationCity: String? = nil,
         expectedNearbyCount: Int? = nil,
         expectedScreenKind: DetectedScreenKind? = nil,
+        expectedVisibleTargetAges: [Int]? = nil,
         minimumFaces: Int? = nil,
         notes: String? = nil
     ) {
@@ -37,6 +39,7 @@ public struct FixtureManifest: Codable, Sendable {
         self.expectedLocationCity = expectedLocationCity
         self.expectedNearbyCount = expectedNearbyCount
         self.expectedScreenKind = expectedScreenKind
+        self.expectedVisibleTargetAges = expectedVisibleTargetAges
         self.minimumFaces = minimumFaces
         self.notes = notes
     }
@@ -51,6 +54,7 @@ public struct FixtureManifest: Codable, Sendable {
         case expectedLocationCity
         case expectedNearbyCount
         case expectedScreenKind
+        case expectedVisibleTargetAges
         case minimumFaces
         case notes
     }
@@ -66,6 +70,7 @@ public struct FixtureManifest: Codable, Sendable {
         expectedLocationCity = try container.decodeIfPresent(String.self, forKey: .expectedLocationCity)
         expectedNearbyCount = try container.decodeIfPresent(Int.self, forKey: .expectedNearbyCount)
         expectedScreenKind = try container.decodeIfPresent(DetectedScreenKind.self, forKey: .expectedScreenKind)
+        expectedVisibleTargetAges = try container.decodeIfPresent([Int].self, forKey: .expectedVisibleTargetAges)
         minimumFaces = try container.decodeIfPresent(Int.self, forKey: .minimumFaces)
         notes = try container.decodeIfPresent(String.self, forKey: .notes)
     }
@@ -83,6 +88,7 @@ public struct FixtureReplayResult: Sendable {
     public let allRecommendationAges: [RecommendationAgeCandidate]
     public let temporalLocation: TemporalLocationResolution
     public let screenClassification: ScreenClassification
+    public let visibleRecommendationTargets: [VisibleRecommendationTarget]
     public let validationFailures: [String]
 
     public init(
@@ -97,6 +103,7 @@ public struct FixtureReplayResult: Sendable {
         allRecommendationAges: [RecommendationAgeCandidate],
         temporalLocation: TemporalLocationResolution,
         screenClassification: ScreenClassification,
+        visibleRecommendationTargets: [VisibleRecommendationTarget],
         validationFailures: [String]
     ) {
         self.manifestURL = manifestURL
@@ -110,6 +117,7 @@ public struct FixtureReplayResult: Sendable {
         self.allRecommendationAges = allRecommendationAges
         self.temporalLocation = temporalLocation
         self.screenClassification = screenClassification
+        self.visibleRecommendationTargets = visibleRecommendationTargets
         self.validationFailures = validationFailures
     }
 }
@@ -159,6 +167,7 @@ public struct FixtureReplayHarness: Sendable {
         let allRecommendationAges = ageParser.allAges(in: analysis.text)
         let temporalLocation = rotatingLocationBadgeParser.resolve(frames: [analysis.text])
         let screenClassification = NavigationStateDetector().classify(analysis)
+        let visibleRecommendationTargets = VisibleRecommendationTargetDetector().targets(in: analysis.text)
         var failures: [String] = []
 
         for anchor in manifest.expectedAnchors where !anchorMatcher.contains(anchor: anchor, in: combinedText) {
@@ -221,6 +230,18 @@ public struct FixtureReplayHarness: Sendable {
             )
         }
 
+        for expectedAge in manifest.expectedVisibleTargetAges ?? []
+        where !visibleRecommendationTargets.contains(where: { $0.displayedAge == expectedAge }) {
+            let galleryBounds = analysis.text
+                .first(where: { $0.text.localizedCaseInsensitiveContains("Suggested for You") })?
+                .bounds
+            let ageDebug = allRecommendationAges.map { "\($0.age)@\($0.bounds)" }
+            failures.append(
+                "Expected visible photo target age \(expectedAge), got \(visibleRecommendationTargets.map(\.displayedAge)); "
+                    + "gallery=\(galleryBounds.map(String.init(describing:)) ?? "none"), ages=\(ageDebug)"
+            )
+        }
+
         return FixtureReplayResult(
             manifestURL: manifestURL,
             manifest: manifest,
@@ -233,6 +254,7 @@ public struct FixtureReplayHarness: Sendable {
             allRecommendationAges: allRecommendationAges,
             temporalLocation: temporalLocation,
             screenClassification: screenClassification,
+            visibleRecommendationTargets: visibleRecommendationTargets,
             validationFailures: failures
         )
     }

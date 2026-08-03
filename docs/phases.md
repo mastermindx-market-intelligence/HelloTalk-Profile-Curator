@@ -26,6 +26,7 @@ Exit evidence: unit tests plus successful replay of the supervised fixture set.
 - [x] Fail-closed carousel gesture preview, disabled after supervised mirroring validation failed
 - [x] Discrete vertical scroll path verified; touch-drag gestures disabled as nonfunctional
 - [x] Bounded, deduplicated visible-card graph traversal policy and ledger
+- [x] Age-anchored visible-card photo proposals with dynamic social/ad-control exclusions
 - [x] State/postcondition event log with local JSONL audit trail
 - [x] Latched emergency stop and conservative session caps
 - [x] Supervised UI observations in `docs/ui-observations.md`
@@ -33,7 +34,7 @@ Exit evidence: unit tests plus successful replay of the supervised fixture set.
 
 Exit evidence: profile-to-Personal-Info-to-Suggestions traversal in dry-run/step mode with no social control activated.
 
-Remaining implementation gate: detect safe visible-card photo targets dynamically, propose one at a time, and validate profile identity change before the next graph hop.
+Remaining implementation gate: associate missing-age cards with photo/name geometry and connect accepted dry-run proposals to the identity-change state transition.
 
 ## Phase 3 — primary collection MVP
 

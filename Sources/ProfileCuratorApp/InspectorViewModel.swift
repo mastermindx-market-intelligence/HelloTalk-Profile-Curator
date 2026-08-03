@@ -30,8 +30,9 @@ final class InspectorViewModel: ObservableObject {
     @Published var sessionState = NavigationSessionState()
     @Published var galleryGesture: PlannedGesture?
     @Published var galleryGestureStatus = "Visible-card profile hopping is active"
+    @Published var proposedVisibleCardTarget: VisibleRecommendationTarget?
+    @Published var visibleCardProposalStatus = "No visible-card proposal"
 
-    let previewAction = DefaultInspectorCalibration.previewAction
     let previewExclusions = DefaultInspectorCalibration.previewExclusions
 
     private let analyzer = VisionFixtureAnalyzer()
@@ -46,6 +47,8 @@ final class InspectorViewModel: ObservableObject {
     private let galleryGesturePlanner = GalleryGesturePlanner()
     private let sessionPolicy = NavigationSessionPolicy.conservativeDefault
     private let discoveryPolicy = DiscoveryPolicy.observedDefault
+    private let visibleTargetDetector = VisibleRecommendationTargetDetector()
+    private let socialControlDetector = SocialControlExclusionDetector()
     private let eventStore: NavigationEventLogStore?
     private var currentCGImage: CGImage?
     private var lastProfileUsername: String?
@@ -84,10 +87,28 @@ final class InspectorViewModel: ObservableObject {
         return recommendationAgeParser.allAges(in: analysis.text)
     }
 
+    var visibleRecommendationTargets: [VisibleRecommendationTarget] {
+        guard let analysis else { return [] }
+        return visibleTargetDetector.targets(in: analysis.text)
+    }
+
+    var dynamicSocialExclusions: [ExclusionZone] {
+        guard let analysis else { return [] }
+        return socialControlDetector.exclusions(in: analysis.text)
+    }
+
+    var activePreviewExclusions: [ExclusionZone] {
+        previewExclusions + dynamicSocialExclusions
+    }
+
+    var previewAction: PlannedAction {
+        proposedVisibleCardTarget?.plannedAction ?? DefaultInspectorCalibration.previewAction
+    }
+
     var previewDecision: ActionSafetyDecision {
         ActionSafetyValidator().validate(
             previewAction,
-            exclusionZones: previewExclusions,
+            exclusionZones: activePreviewExclusions,
             emergencyStopActive: sessionState.pauseReason == .emergencyStop,
             sessionPauseReason: sessionState.pauseReason?.summary,
             liveInputEnabled: false
@@ -302,6 +323,29 @@ final class InspectorViewModel: ObservableObject {
         recordSessionPauseIfNeeded()
     }
 
+    func proposeNextVisibleCard() {
+        let targets = visibleRecommendationTargets
+        guard !targets.isEmpty else {
+            proposedVisibleCardTarget = nil
+            visibleCardProposalStatus = "Blocked · no age-anchored visible recommendation photo found"
+            recordEvent(.proposal, summary: visibleCardProposalStatus)
+            return
+        }
+
+        let target = targets.first(where: { (18...21).contains($0.displayedAge) }) ?? targets[0]
+        proposedVisibleCardTarget = target
+        sessionState.recordProposal(policy: sessionPolicy)
+        let decision = previewDecision
+        if let rejection = decision.rejection {
+            visibleCardProposalStatus = "Age \(target.displayedAge) · blocked: \(actionRejectionDescription(rejection))"
+        } else {
+            visibleCardProposalStatus = "Age \(target.displayedAge) · geometry accepted"
+        }
+        recordEvent(.proposal, summary: "Visible-card photo proposed for displayed age \(target.displayedAge)")
+        recordEvent(.safetyDecision, summary: visibleCardProposalStatus)
+        recordSessionPauseIfNeeded()
+    }
+
     func armGalleryPostcondition() {
         guard let observationSnapshot else {
             galleryGestureStatus = "Capture a baseline frame before arming a postcondition"
@@ -337,6 +381,8 @@ final class InspectorViewModel: ObservableObject {
         lastPostconditionResult = nil
         galleryGesture = nil
         galleryGestureStatus = "Visible-card profile hopping is active"
+        proposedVisibleCardTarget = nil
+        visibleCardProposalStatus = "No visible-card proposal"
         navigationState = screenClassification?.navigationState ?? .identifyCurrentScreen
         recordEvent(.sessionReset, summary: "Started a new dry-run session")
     }
@@ -444,6 +490,8 @@ final class InspectorViewModel: ObservableObject {
         self.fixtureURL = fixtureURL
         currentCGImage = cgImage
         analysis = result
+        proposedVisibleCardTarget = nil
+        visibleCardProposalStatus = "No visible-card proposal for this frame"
         temporalLocation = rotatingLocationBadgeParser.resolve(frames: [result.text])
         screenClassification = snapshot.screen
         observationSnapshot = snapshot
@@ -513,6 +561,17 @@ final class InspectorViewModel: ObservableObject {
         case .sessionPaused(let reason): reason
         case .dryRunRequired: "dry-run mode forbids input"
         case nil: "unknown safety rejection"
+        }
+    }
+
+    private func actionRejectionDescription(_ rejection: ActionSafetyRejection) -> String {
+        switch rejection {
+        case .outsideWindow: "point leaves the window"
+        case .outsideRequiredSafeRegion: "point leaves the photo-safe region"
+        case .intersectsExclusionZone(let label): "point intersects \(label)"
+        case .emergencyStopActive: "emergency stop is active"
+        case .sessionPaused(let reason): reason
+        case .dryRunRequired: "dry-run mode forbids input"
         }
     }
 }

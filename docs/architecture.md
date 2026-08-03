@@ -17,6 +17,8 @@ The observed 2026-08-03 UI makes the in-profile **Suggested for You** row the pr
 
 Horizontal motion did not work in the supervised iPhone Mirroring session: click-drag produced no movement, and a window-level horizontal scroll shifted the whole profile rather than the card row. The reliable traversal is therefore a bounded visible-card graph. Open a visible recommendation by its photo, verify the changed profile identity, and use that profile's fresh Suggested for You row as the next inventory page. An age-ineligible or age-missing female profile may be a routing-only node but is never accepted or collected. Usernames are deduplicated and routing depth is capped at 12.
 
+For cards with an explicit age badge, the Inspector derives a photo-safe proposal point above and left of the badge, constrained beneath the Suggested for You anchor and above the fixed social band. OCR-detected Say Hi, Follow, Gift, Like, Free to Chat, Shop Now, and Download controls become expanded dynamic exclusion rectangles. Cards without a reliable age anchor remain manual/fail-closed until a separate card-association detector is validated.
+
 Custom Search is a seed/fallback path, not the main traversal loop. Its results are restricted to currently active users, its rows omit exact age/gender, and selecting the Female filter opened a paid subscription offer during supervised testing. The safe loop is therefore:
 
 ```text

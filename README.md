@@ -27,6 +27,7 @@ The first slice is an offline Inspector. It can:
 - classify known screens, fail closed immediately, and latch the session after two consecutive unknown observations;
 - record observations, proposals, safety decisions, transitions, and postconditions to a local JSONL audit log;
 - traverse fresh recommendation inventory through bounded, deduplicated visible-card profile hops;
+- derive dry-run photo targets from visible age-badge geometry and dynamically exclude OCR-detected Say Hi, Follow, Gift, Like, chat, download, and ad controls;
 - use discrete vertical scroll events while keeping touch-drag and horizontal carousel gestures disabled by default;
 - latch an emergency stop and enforce conservative duration, proposal, and profile-visit limits;
 - show Screen Recording and Accessibility permission status;
