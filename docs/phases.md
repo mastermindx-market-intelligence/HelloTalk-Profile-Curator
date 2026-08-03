@@ -22,7 +22,7 @@ Exit evidence: unit tests plus successful replay of the supervised fixture set.
 - [x] Add a read-only five-frame burst for the rotating location/nearby badge
 - [x] Calibration editor for normalized safe and excluded regions (awaiting supervised real-UI calibration)
 - [x] Deterministic OCR/geometry content fingerprint and frame-change postcondition
-- [ ] Mirroring-window resize detection
+- [x] Mirroring-window resize detection and new-session recalibration gate
 - [x] Fail-closed carousel gesture preview, disabled after supervised mirroring validation failed
 - [x] Discrete vertical scroll path verified; touch-drag gestures disabled as nonfunctional
 - [x] Bounded, deduplicated visible-card graph traversal policy and ledger
@@ -38,41 +38,47 @@ The visible-card proposal path now associates missing-age cards by name geometry
 
 ## Phase 3 — primary collection MVP
 
-- [ ] Female and age 18–21 opened-profile verification
-- [ ] INFJ/INTJ collection only
-- [ ] Profile-top and enlarged-PFP macOS capture
-- [ ] GRDB persistence, checkpointing, and username merge
-- [ ] Basic local review grid
+- [x] Female and age 18–21 opened-profile verification
+- [x] INFJ/INTJ and separately routed secondary eligibility
+- [x] Mac-rendered profile checkpoint capture with local media identity
+- [x] GRDB persistence, checkpointing, and username merge
+- [x] Basic local review grid
+
+Remaining supervised gate: validate calibrated PFP open/crop/close actions before exposing them in the runtime UI.
 
 ## Phase 4 — Moments and no-face policy
 
-- [ ] Moment photo viewer/gallery navigation
-- [ ] 20 scanned / 10 retained hard limits
-- [ ] Perceptual-hash deduplication
-- [ ] No-face tombstone and media purge
-- [ ] Crash/restart resume
+- [ ] Moment photo viewer/gallery navigation (requires the next supervised UI session)
+- [x] 20 scanned / 10 retained hard limits
+- [x] Perceptual-hash deduplication
+- [x] No-face tombstone policy and media purge primitive
+- [x] Crash/restart resume checkpoint
 
 ## Phase 5 — optional Qwen analysis
 
-- [ ] Tailscale/Ollama endpoint validation and health check
-- [ ] Structured JSON tasks with versioned prompts
-- [ ] Offline queue, timeout, bounded retry
-- [ ] Evidence/confidence persistence and display
+- [x] Tailscale/Ollama endpoint validation and health check
+- [x] Structured JSON tasks with versioned prompts
+- [x] Offline queue, timeout, bounded retry
+- [x] Evidence/confidence persistence schema and dashboard score display
+
+Deferred by user: supply the Windows MagicDNS/Tailscale URL and choose the upgraded Qwen model.
 
 ## Phase 6 — secondary group and ranking
 
-- [ ] Secondary MBTI routing and mandatory no-face policy
-- [ ] Location tiers and editable score weights
-- [ ] High-priority secondary rules
+- [x] Secondary MBTI routing and mandatory no-face policy
+- [x] Location tiers and configurable score-weight model
+- [x] High-priority secondary rules
 
 ## Phase 7 — dashboard hardening
 
-- [ ] Database-backed filters, sorting, and pagination
-- [ ] Detail gallery, evidence links, notes, and review shortcuts
-- [ ] CSV/JSON export and data deletion tools
+- [x] Database-backed filters, sorting, and pagination
+- [x] Detail gallery, score breakdown, notes, and review shortcuts
+- [x] CSV/JSON export and data deletion tools
+- [ ] Per-image Qwen evidence links (populates after live endpoint wiring)
 
 ## Phase 8 — packaging and hardening
 
-- [ ] Xcode application target and entitlements
-- [ ] Developer ID, Hardened Runtime, notarized/stapled DMG
-- [ ] Long-session, UI-drift, disconnect, permission, and recovery tests
+- [x] Native app bundle metadata and entitlements
+- [x] Hardened Runtime app/DMG packaging and optional notarization script
+- [x] Unknown-state, resize, persistence, offline-retry, and 500-action exclusion stress tests
+- [ ] Developer ID signing/notarization credentials and final supervised long-session regression

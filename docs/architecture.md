@@ -42,6 +42,9 @@ Acquire female age-18–21 seed through age-filtered Custom Search or Connect
 ProfileCuratorApp
 ├── PermissionOnboarding
 ├── InspectorWorkspace
+├── ReviewDashboard
+├── LocalDataSettings
+├── QwenConnectionSettings
 └── SessionControls
 
 ProfileCuratorCore
@@ -67,8 +70,14 @@ ProfileCuratorCore
 │   ├── gallery-first discovery policy
 │   ├── visible postconditions
 │   └── local JSONL event log
+├── Analysis
+│   ├── versioned structured Qwen prompts and response schemas
+│   ├── Ollama URLSession client with health check and bounded retry
+│   └── persistent offline analysis queue
 └── Persistence
-    └── GRDB-backed local repository
+    ├── GRDB-backed local repository and database pagination
+    ├── atomic navigation checkpoint
+    └── perceptual-hash media store
 ```
 
 ## Coordinate contract
@@ -99,6 +108,8 @@ Rotating labels are temporal observations. The map pill alternates between a cit
 ## Local data boundary
 
 The default data root is `~/Library/Application Support/ProfileCurator/`. Real screenshots, media, database files, diagnostics, and local configuration are ignored by Git. Network analysis is optional and limited to a user-configured Ollama endpoint reachable over the user's private Tailscale network. Collection continues to a local queue if that endpoint is unavailable.
+
+The application never discovers or guesses the Windows endpoint. Settings accept an explicit HTTP/HTTPS MagicDNS or Tailscale URL, reject embedded credentials/query fragments, list Ollama models through `api/tags`, and call `api/chat` only from the native process. Prompt versions and raw structured responses are persisted for auditability. The endpoint and upgraded Qwen model can be supplied later without changing collection, persistence, scoring, or dashboard code.
 
 ## Identity and image boundaries
 

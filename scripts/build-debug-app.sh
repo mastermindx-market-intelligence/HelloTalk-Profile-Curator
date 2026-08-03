@@ -12,5 +12,6 @@ mkdir -p "$bundle_dir/Contents/Resources"
 cp "$project_dir/.build/debug/ProfileCurator" "$bundle_dir/Contents/MacOS/ProfileCurator"
 cp "$project_dir/Packaging/Info.plist" "$bundle_dir/Contents/Info.plist"
 
-codesign --force --sign - --timestamp=none "$bundle_dir"
+codesign --force --sign - --options runtime --timestamp=none \
+  --entitlements "$project_dir/Packaging/ProfileCurator.entitlements" "$bundle_dir"
 echo "$bundle_dir"

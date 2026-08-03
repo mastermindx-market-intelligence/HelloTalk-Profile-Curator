@@ -34,6 +34,7 @@ final class InspectorViewModel: ObservableObject {
     @Published var visibleCardProposalStatus = "No visible-card proposal"
     @Published var recommendationLedger = RecommendationTraversalLedger()
     @Published var pendingGraphDecision: RecommendationTraversalDecision?
+    @Published var collectionStatus = "No verified profile checkpoint"
 
     let previewExclusions = DefaultInspectorCalibration.previewExclusions
 
@@ -55,9 +56,24 @@ final class InspectorViewModel: ObservableObject {
     private var currentCGImage: CGImage?
     private var lastProfileUsername: String?
     private var pendingGraphCandidate: VisibleRecommendationCandidate?
+    private var windowGeometryGuard: WindowGeometryGuard?
+    private let profileRepository: ProfileRepository?
+    private let mediaStore: MediaStore?
+    private var collectedProfileID: String?
+    private var profileAccumulator = ProfileObservationAccumulator()
 
     init() {
         eventStore = try? NavigationEventLogStore.defaultStore()
+        profileRepository = try? ProfileRepository.defaultRepository()
+        if let profileRepository,
+           let root = try? ProfileRepository.defaultDataDirectory() {
+            mediaStore = try? MediaStore(
+                rootURL: root.appendingPathComponent("media", isDirectory: true),
+                repository: profileRepository
+            )
+        } else {
+            mediaStore = nil
+        }
     }
 
     var mbtiMatches: [MBTIMatch] {
@@ -147,6 +163,14 @@ final class InspectorViewModel: ObservableObject {
         "Visible-card graph · \(recommendationLedger.visitedProfileKeys.count) visited · depth \(recommendationLedger.routingDepth)/\(discoveryPolicy.maximumRoutingDepth)"
     }
 
+    var profileEligibilityDecision: ProfileEligibilityDecision {
+        ProfileEligibilityPolicy().evaluate(profileAccumulator.evidence)
+    }
+
+    var canCheckpointProfile: Bool {
+        profileEligibilityDecision.isCollectible && currentCGImage != nil && profileRepository != nil
+    }
+
     func chooseFixture() {
         let panel = NSOpenPanel()
         panel.title = "Choose a private screenshot fixture"
@@ -232,6 +256,7 @@ final class InspectorViewModel: ObservableObject {
         Task {
             do {
                 let frame = try await WindowCaptureService().capture(windowID: selectedWindowID)
+                try validateWindowGeometry(frame)
                 let image = NSImage(
                     cgImage: frame.image,
                     size: NSSize(width: frame.image.width, height: frame.image.height)
@@ -271,6 +296,7 @@ final class InspectorViewModel: ObservableObject {
                     frameCount: frameCount,
                     intervalMilliseconds: 700
                 )
+                for frame in frames { try validateWindowGeometry(frame) }
                 let analyses = try frames.map { try analyzer.analyze($0.image) }
                 guard let lastFrame = frames.last, let lastAnalysis = analyses.last else { return }
 
@@ -409,6 +435,49 @@ final class InspectorViewModel: ObservableObject {
         recordEvent(.emergencyStop, summary: sessionState.pauseReason?.summary ?? "Emergency stop")
     }
 
+    func checkpointVerifiedProfile() {
+        guard canCheckpointProfile,
+              let username = profileAccumulator.username,
+              let image = currentCGImage,
+              let profileRepository else {
+            collectionStatus = "Blocked · opened profile must verify username, female badge, age 18–21, and target MBTI"
+            return
+        }
+        do {
+            let record = try profileRepository.upsert(ProfileDraft(
+                usernameRaw: username,
+                displayName: profileAccumulator.displayName,
+                age: profileAccumulator.age,
+                gender: profileAccumulator.gender,
+                mbti: profileAccumulator.mbti,
+                location: profileAccumulator.location,
+                profileCompletenessScore: profileAccumulator.completenessScore,
+                status: .new
+            ))
+            collectedProfileID = record.id
+            let largestFace = analysis?.faces.max(by: { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height })
+            let area = largestFace.map { $0.bounds.width * $0.bounds.height } ?? 0
+            let quality = largestFace?.captureQuality.map(Double.init)
+            let usable = area >= CollectionLimits.hardenedDefault.minimumFaceAreaRatio
+                && (quality ?? 0) >= CollectionLimits.hardenedDefault.minimumFaceCaptureQuality
+            _ = try mediaStore?.persist(
+                image: image,
+                profileID: record.id,
+                kind: .profileTop,
+                sourceSequence: record.visitCount,
+                faceCount: analysis?.faces.count ?? 0,
+                largestFaceRatio: area,
+                faceCaptureQuality: quality,
+                usableFace: usable,
+                retained: false
+            )
+            collectionStatus = "Checkpointed \(record.usernameNormalized) locally · visit \(record.visitCount)"
+            recordEvent(.transition, summary: collectionStatus)
+        } catch {
+            collectionStatus = "Checkpoint failed · \(error.localizedDescription)"
+        }
+    }
+
     func resetDryRunSession() {
         sessionState = NavigationSessionState()
         pendingPostcondition = nil
@@ -421,6 +490,7 @@ final class InspectorViewModel: ObservableObject {
         pendingGraphCandidate = nil
         pendingGraphDecision = nil
         navigationState = screenClassification?.navigationState ?? .identifyCurrentScreen
+        windowGeometryGuard = nil
         recordEvent(.sessionReset, summary: "Started a new dry-run session")
     }
 
@@ -532,6 +602,16 @@ final class InspectorViewModel: ObservableObject {
         temporalLocation = rotatingLocationBadgeParser.resolve(frames: [result.text])
         screenClassification = snapshot.screen
         observationSnapshot = snapshot
+        profileAccumulator.observe(
+            snapshot: snapshot,
+            analysis: result,
+            age: profileHeaderParser.bestAge(in: result.text),
+            gender: profileHeaderParser.bestAge(in: result.text).map {
+                genderBadgeClassifier.classify(image: cgImage, ageMatch: $0).hint
+            },
+            mbti: mbtiParser.firstTarget(in: result.text)?.type,
+            location: locationNormalizer.normalize(result.text.map(\.text).joined(separator: " · "))
+        )
 
         sessionState.recordScreen(snapshot.screen.kind, policy: sessionPolicy, now: capturedAt)
         if let username = snapshot.username, username != lastProfileUsername,
@@ -582,6 +662,14 @@ final class InspectorViewModel: ObservableObject {
         }
     }
 
+    private func validateWindowGeometry(_ frame: CapturedWindowFrame) throws {
+        if let windowGeometryGuard {
+            try windowGeometryGuard.validate(frame)
+        } else {
+            windowGeometryGuard = WindowGeometryGuard(frame: frame)
+        }
+    }
+
     private func recordSessionPauseIfNeeded() {
         guard let reason = sessionState.pauseReason else { return }
         recordEvent(.sessionPaused, summary: reason.summary)
@@ -620,6 +708,48 @@ final class InspectorViewModel: ObservableObject {
         case .emergencyStopActive: "emergency stop is active"
         case .sessionPaused(let reason): reason
         case .dryRunRequired: "dry-run mode forbids input"
+        }
+    }
+}
+
+private struct ProfileObservationAccumulator {
+    var username: String?
+    var displayName: String?
+    var age: Int?
+    var gender: GenderBadgeHint = .unknown
+    var mbti: MBTIType?
+    var location: NormalizedLocation?
+
+    var evidence: OpenedProfileEvidence {
+        OpenedProfileEvidence(username: username, age: age, gender: gender, mbti: mbti)
+    }
+
+    var completenessScore: Double {
+        let signals: [Bool] = [username != nil, displayName != nil, age != nil, gender != .unknown, mbti != nil, location?.city != nil]
+        return Double(signals.filter { $0 }.count) / Double(signals.count) * 100
+    }
+
+    mutating func observe(
+        snapshot: ObservationSnapshot,
+        analysis: FixtureAnalysis,
+        age: ProfileAgeMatch?,
+        gender: GenderBadgeHint?,
+        mbti: MBTIType?,
+        location: NormalizedLocation
+    ) {
+        if let observed = snapshot.username, observed != username {
+            self = ProfileObservationAccumulator(username: observed)
+        }
+        if username == nil { username = snapshot.username }
+        if let age { self.age = age.age }
+        if let gender, gender != .unknown { self.gender = gender }
+        if let mbti { self.mbti = mbti }
+        if location.city != nil || location.province != nil { self.location = location }
+        if displayName == nil {
+            displayName = analysis.text
+                .filter { !$0.text.hasPrefix("@") && $0.bounds.minY < 0.35 }
+                .sorted { $0.bounds.minY < $1.bounds.minY }
+                .first?.text
         }
     }
 }

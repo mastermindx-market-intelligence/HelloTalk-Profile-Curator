@@ -1,6 +1,279 @@
 import Foundation
 @preconcurrency import GRDB
 
+public enum ProfileStatus: String, Codable, CaseIterable, Sendable {
+    case new
+    case analyzing
+    case review
+    case shortlisted
+    case rejected
+    case contacted
+    case rejectedNoFace = "rejected_no_face"
+
+    public var isManualDecision: Bool {
+        self == .shortlisted || self == .rejected || self == .contacted
+    }
+}
+
+public enum MediaKind: String, Codable, CaseIterable, Sendable {
+    case profileTop = "profile_top"
+    case pfp
+    case moment
+    case faceCrop = "face_crop"
+    case diagnostic
+}
+
+public enum AnalysisType: String, Codable, CaseIterable, Sendable {
+    case faceVerification = "face_verification"
+    case visualAppeal = "visual_appeal"
+    case lifestyle
+}
+
+public struct ProfileRecord: Codable, FetchableRecord, PersistableRecord, Identifiable, Hashable, Sendable {
+    public static let databaseTableName = "profiles"
+
+    public var id: String
+    public var usernameRaw: String?
+    public var usernameNormalized: String
+    public var displayName: String?
+    public var age: Int?
+    public var gender: String?
+    public var mbti: String?
+    public var mbtiGroup: String?
+    public var locationRaw: String?
+    public var cityNormalized: String?
+    public var provinceNormalized: String?
+    public var locationTier: Int?
+    public var locationScore: Int?
+    public var faceScore: Double?
+    public var lifestyleScore: Double?
+    public var profileCompletenessScore: Double
+    public var overallScore: Double?
+    public var analysisConfidence: Double
+    public var status: String
+    public var firstSeenAt: Date
+    public var lastSeenAt: Date
+    public var lastAnalyzedAt: Date?
+    public var visitCount: Int
+    public var rejectionReason: String?
+    public var notes: String
+
+    public var typedStatus: ProfileStatus { ProfileStatus(rawValue: status) ?? .new }
+    public var typedMBTI: MBTIType? { mbti.flatMap(MBTIType.init(rawValue:)) }
+    public var typedGroup: MBTIGroup? { mbtiGroup.flatMap(MBTIGroup.init(rawValue:)) }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case usernameRaw = "username_raw"
+        case usernameNormalized = "username_normalized"
+        case displayName = "display_name"
+        case age, gender, mbti
+        case mbtiGroup = "mbti_group"
+        case locationRaw = "location_raw"
+        case cityNormalized = "city_normalized"
+        case provinceNormalized = "province_normalized"
+        case locationTier = "location_tier"
+        case locationScore = "location_score"
+        case faceScore = "face_score"
+        case lifestyleScore = "lifestyle_score"
+        case profileCompletenessScore = "profile_completeness_score"
+        case overallScore = "overall_score"
+        case analysisConfidence = "analysis_confidence"
+        case status
+        case firstSeenAt = "first_seen_at"
+        case lastSeenAt = "last_seen_at"
+        case lastAnalyzedAt = "last_analyzed_at"
+        case visitCount = "visit_count"
+        case rejectionReason = "rejection_reason"
+        case notes
+    }
+}
+
+public struct ProfileDraft: Hashable, Sendable {
+    public var usernameRaw: String
+    public var displayName: String?
+    public var age: Int?
+    public var gender: GenderBadgeHint
+    public var mbti: MBTIType?
+    public var location: NormalizedLocation?
+    public var profileCompletenessScore: Double
+    public var status: ProfileStatus
+
+    public init(
+        usernameRaw: String,
+        displayName: String? = nil,
+        age: Int? = nil,
+        gender: GenderBadgeHint = .unknown,
+        mbti: MBTIType? = nil,
+        location: NormalizedLocation? = nil,
+        profileCompletenessScore: Double = 0,
+        status: ProfileStatus = .new
+    ) {
+        self.usernameRaw = usernameRaw
+        self.displayName = displayName
+        self.age = age
+        self.gender = gender
+        self.mbti = mbti
+        self.location = location
+        self.profileCompletenessScore = min(100, max(0, profileCompletenessScore))
+        self.status = status
+    }
+
+    public var normalizedUsername: String {
+        usernameRaw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
+public struct MediaRecord: Codable, FetchableRecord, PersistableRecord, Identifiable, Hashable, Sendable {
+    public static let databaseTableName = "media"
+
+    public var id: String
+    public var profileID: String
+    public var kind: String
+    public var filePath: String
+    public var perceptualHash: String
+    public var sourceSequence: Int
+    public var faceCount: Int
+    public var largestFaceRatio: Double
+    public var faceCaptureQuality: Double?
+    public var usableFace: Bool
+    public var retained: Bool
+    public var createdAt: Date
+
+    public var typedKind: MediaKind { MediaKind(rawValue: kind) ?? .diagnostic }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case profileID = "profile_id"
+        case kind
+        case filePath = "file_path"
+        case perceptualHash = "perceptual_hash"
+        case sourceSequence = "source_sequence"
+        case faceCount = "face_count"
+        case largestFaceRatio = "largest_face_ratio"
+        case faceCaptureQuality = "face_capture_quality"
+        case usableFace = "usable_face"
+        case retained
+        case createdAt = "created_at"
+    }
+}
+
+public struct AnalysisRunRecord: Codable, FetchableRecord, PersistableRecord, Identifiable, Hashable, Sendable {
+    public static let databaseTableName = "analysis_runs"
+
+    public var id: String
+    public var profileID: String
+    public var analysisType: String
+    public var modelName: String
+    public var promptVersion: String
+    public var requestJSON: String
+    public var responseJSON: String?
+    public var startedAt: Date
+    public var completedAt: Date?
+    public var success: Bool
+    public var error: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case profileID = "profile_id"
+        case analysisType = "analysis_type"
+        case modelName = "model_name"
+        case promptVersion = "prompt_version"
+        case requestJSON = "request_json"
+        case responseJSON = "response_json"
+        case startedAt = "started_at"
+        case completedAt = "completed_at"
+        case success, error
+    }
+}
+
+public enum ProfileSort: String, CaseIterable, Sendable {
+    case overallScore
+    case faceScore
+    case lifestyleScore
+    case locationScore
+    case confidenceAdjustedScore
+    case newest
+    case recentlyUpdated
+    case username
+
+    fileprivate var sql: String {
+        switch self {
+        case .overallScore: "overall_score DESC, last_seen_at DESC"
+        case .faceScore: "face_score DESC, last_seen_at DESC"
+        case .lifestyleScore: "lifestyle_score DESC, last_seen_at DESC"
+        case .locationScore: "location_score DESC, last_seen_at DESC"
+        case .confidenceAdjustedScore:
+            "(COALESCE(overall_score, 0) * (0.75 + 0.25 * analysis_confidence)) DESC, last_seen_at DESC"
+        case .newest: "first_seen_at DESC"
+        case .recentlyUpdated: "last_seen_at DESC"
+        case .username: "username_normalized ASC"
+        }
+    }
+}
+
+public struct ProfileQuery: Hashable, Sendable {
+    public var search: String
+    public var mbti: Set<MBTIType>
+    public var groups: Set<MBTIGroup>
+    public var statuses: Set<ProfileStatus>
+    public var minimumAge: Int?
+    public var maximumAge: Int?
+    public var city: String?
+    public var secondaryHighPriorityOnly: Bool
+    public var minimumFaceScore: Double?
+    public var minimumLifestyleScore: Double?
+    public var minimumOverallScore: Double?
+    public var minimumConfidence: Double?
+    public var usableFaceRequired: Bool
+    public var sort: ProfileSort
+    public var page: Int
+    public var pageSize: Int
+
+    public init(
+        search: String = "",
+        mbti: Set<MBTIType> = [],
+        groups: Set<MBTIGroup> = [],
+        statuses: Set<ProfileStatus> = [],
+        minimumAge: Int? = nil,
+        maximumAge: Int? = nil,
+        city: String? = nil,
+        secondaryHighPriorityOnly: Bool = false,
+        minimumFaceScore: Double? = nil,
+        minimumLifestyleScore: Double? = nil,
+        minimumOverallScore: Double? = nil,
+        minimumConfidence: Double? = nil,
+        usableFaceRequired: Bool = false,
+        sort: ProfileSort = .recentlyUpdated,
+        page: Int = 0,
+        pageSize: Int = 20
+    ) {
+        self.search = search
+        self.mbti = mbti
+        self.groups = groups
+        self.statuses = statuses
+        self.minimumAge = minimumAge
+        self.maximumAge = maximumAge
+        self.city = city
+        self.secondaryHighPriorityOnly = secondaryHighPriorityOnly
+        self.minimumFaceScore = minimumFaceScore
+        self.minimumLifestyleScore = minimumLifestyleScore
+        self.minimumOverallScore = minimumOverallScore
+        self.minimumConfidence = minimumConfidence
+        self.usableFaceRequired = usableFaceRequired
+        self.sort = sort
+        self.page = max(0, page)
+        self.pageSize = [20, 50, 100].contains(pageSize) ? pageSize : 20
+    }
+}
+
+public struct ProfilePage: Sendable {
+    public let records: [ProfileRecord]
+    public let totalCount: Int
+    public let page: Int
+    public let pageSize: Int
+}
+
 public final class ProfileRepository: @unchecked Sendable {
     public let databasePath: String
     private let databaseQueue: DatabaseQueue
@@ -20,7 +293,303 @@ public final class ProfileRepository: @unchecked Sendable {
         )
         let directory = applicationSupport.appendingPathComponent("ProfileCurator", isDirectory: true)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        for child in ["media", "diagnostics", "exports"] {
+            try fileManager.createDirectory(
+                at: directory.appendingPathComponent(child, isDirectory: true),
+                withIntermediateDirectories: true
+            )
+        }
         return directory
+    }
+
+    public static func defaultRepository(fileManager: FileManager = .default) throws -> ProfileRepository {
+        let root = try defaultDataDirectory(fileManager: fileManager)
+        return try ProfileRepository(databasePath: root.appendingPathComponent("curator.sqlite").path)
+    }
+
+    @discardableResult
+    public func upsert(_ draft: ProfileDraft, now: Date = Date()) throws -> ProfileRecord {
+        guard !draft.normalizedUsername.isEmpty else {
+            throw RepositoryError.emptyUsername
+        }
+        return try databaseQueue.write { database in
+            let existing = try ProfileRecord.fetchOne(
+                database,
+                sql: "SELECT * FROM profiles WHERE username_normalized = ?",
+                arguments: [draft.normalizedUsername]
+            )
+            let record = ProfileRecord(
+                id: existing?.id ?? UUID().uuidString,
+                usernameRaw: draft.usernameRaw,
+                usernameNormalized: draft.normalizedUsername,
+                displayName: draft.displayName ?? existing?.displayName,
+                age: draft.age ?? existing?.age,
+                gender: draft.gender == .unknown ? existing?.gender : draft.gender.rawValue,
+                mbti: draft.mbti?.rawValue ?? existing?.mbti,
+                mbtiGroup: draft.mbti?.group?.rawValue ?? existing?.mbtiGroup,
+                locationRaw: draft.location?.rawText ?? existing?.locationRaw,
+                cityNormalized: draft.location?.city ?? existing?.cityNormalized,
+                provinceNormalized: draft.location?.province ?? existing?.provinceNormalized,
+                locationTier: draft.location?.tier ?? existing?.locationTier,
+                locationScore: draft.location?.score ?? existing?.locationScore,
+                faceScore: existing?.faceScore,
+                lifestyleScore: existing?.lifestyleScore,
+                profileCompletenessScore: max(draft.profileCompletenessScore, existing?.profileCompletenessScore ?? 0),
+                overallScore: existing?.overallScore,
+                analysisConfidence: existing?.analysisConfidence ?? 0,
+                status: existing?.typedStatus.isManualDecision == true ? existing!.status : draft.status.rawValue,
+                firstSeenAt: existing?.firstSeenAt ?? now,
+                lastSeenAt: now,
+                lastAnalyzedAt: existing?.lastAnalyzedAt,
+                visitCount: (existing?.visitCount ?? 0) + 1,
+                rejectionReason: existing?.rejectionReason,
+                notes: existing?.notes ?? ""
+            )
+            if existing == nil { try record.insert(database) } else { try record.update(database) }
+            return record
+        }
+    }
+
+    public func profile(id: String) throws -> ProfileRecord? {
+        try databaseQueue.read { try ProfileRecord.fetchOne($0, key: id) }
+    }
+
+    public func profile(username: String) throws -> ProfileRecord? {
+        let normalized = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return try databaseQueue.read {
+            try ProfileRecord.fetchOne(
+                $0,
+                sql: "SELECT * FROM profiles WHERE username_normalized = ?",
+                arguments: [normalized]
+            )
+        }
+    }
+
+    public func page(_ query: ProfileQuery) throws -> ProfilePage {
+        let parts = Self.queryParts(query)
+        return try databaseQueue.read { database in
+            let total = try Int.fetchOne(
+                database,
+                sql: "SELECT COUNT(*) FROM profiles \(parts.whereSQL)",
+                arguments: parts.arguments
+            ) ?? 0
+            let records = try ProfileRecord.fetchAll(
+                database,
+                sql: "SELECT * FROM profiles \(parts.whereSQL) ORDER BY \(query.sort.sql) LIMIT ? OFFSET ?",
+                arguments: parts.arguments + [query.pageSize, query.page * query.pageSize]
+            )
+            return ProfilePage(records: records, totalCount: total, page: query.page, pageSize: query.pageSize)
+        }
+    }
+
+    public func updateStatus(id: String, status: ProfileStatus, reason: String? = nil) throws {
+        try databaseQueue.write { database in
+            try database.execute(
+                sql: "UPDATE profiles SET status = ?, rejection_reason = ?, last_seen_at = ? WHERE id = ?",
+                arguments: [status.rawValue, reason, Date(), id]
+            )
+        }
+    }
+
+    public func updateNotes(id: String, notes: String) throws {
+        try databaseQueue.write {
+            try $0.execute(sql: "UPDATE profiles SET notes = ? WHERE id = ?", arguments: [notes, id])
+        }
+    }
+
+    public func updateScores(
+        id: String,
+        face: Double?,
+        lifestyle: Double?,
+        overall: Double?,
+        confidence: Double,
+        analyzedAt: Date = Date()
+    ) throws {
+        try databaseQueue.write {
+            try $0.execute(
+                sql: "UPDATE profiles SET face_score = ?, lifestyle_score = ?, overall_score = ?, analysis_confidence = ?, last_analyzed_at = ?, status = CASE WHEN status IN ('shortlisted','rejected','contacted') THEN status ELSE 'review' END WHERE id = ?",
+                arguments: [face, lifestyle, overall, min(1, max(0, confidence)), analyzedAt, id]
+            )
+        }
+    }
+
+    @discardableResult
+    public func insertMedia(_ record: MediaRecord) throws -> Bool {
+        try databaseQueue.write { database in
+            let duplicate = try Int.fetchOne(
+                database,
+                sql: "SELECT 1 FROM media WHERE profile_id = ? AND perceptual_hash = ? LIMIT 1",
+                arguments: [record.profileID, record.perceptualHash]
+            ) != nil
+            guard !duplicate else { return false }
+            try record.insert(database)
+            return true
+        }
+    }
+
+    public func media(profileID: String, retainedOnly: Bool = false) throws -> [MediaRecord] {
+        try databaseQueue.read { database in
+            let suffix = retainedOnly ? " AND retained = 1" : ""
+            return try MediaRecord.fetchAll(
+                database,
+                sql: "SELECT * FROM media WHERE profile_id = ?\(suffix) ORDER BY source_sequence, created_at",
+                arguments: [profileID]
+            )
+        }
+    }
+
+    public func saveAnalysisRun(_ record: AnalysisRunRecord) throws {
+        try databaseQueue.write { try record.save($0) }
+    }
+
+    public func analysisRuns(profileID: String) throws -> [AnalysisRunRecord] {
+        try databaseQueue.read {
+            try AnalysisRunRecord.fetchAll(
+                $0,
+                sql: "SELECT * FROM analysis_runs WHERE profile_id = ? ORDER BY started_at DESC",
+                arguments: [profileID]
+            )
+        }
+    }
+
+    public func pendingAnalysisRuns(limit: Int = 20) throws -> [AnalysisRunRecord] {
+        try databaseQueue.read {
+            try AnalysisRunRecord.fetchAll(
+                $0,
+                sql: "SELECT * FROM analysis_runs WHERE success = 0 AND completed_at IS NULL ORDER BY started_at LIMIT ?",
+                arguments: [max(1, limit)]
+            )
+        }
+    }
+
+    @discardableResult
+    public func enqueueAnalysis(
+        profileID: String,
+        type: AnalysisType,
+        modelName: String,
+        promptVersion: String,
+        mediaPaths: [String],
+        now: Date = Date()
+    ) throws -> AnalysisJobRecord {
+        let record = AnalysisJobRecord(
+            id: UUID().uuidString,
+            profileID: profileID,
+            analysisType: type,
+            modelName: modelName,
+            promptVersion: promptVersion,
+            mediaPaths: mediaPaths,
+            state: .pending,
+            attemptCount: 0,
+            nextAttemptAt: nil,
+            lastError: nil,
+            createdAt: now,
+            updatedAt: now
+        )
+        try databaseQueue.write { try record.insert($0) }
+        return record
+    }
+
+    public func nextAnalysisJob(now: Date = Date()) throws -> AnalysisJobRecord? {
+        try databaseQueue.read {
+            try AnalysisJobRecord.fetchOne(
+                $0,
+                sql: "SELECT * FROM analysis_jobs WHERE state = 'pending' OR (state = 'retry_waiting' AND next_attempt_at <= ?) ORDER BY created_at LIMIT 1",
+                arguments: [now]
+            )
+        }
+    }
+
+    public func updateAnalysisJob(
+        id: String,
+        state: AnalysisJobState,
+        attemptCount: Int,
+        nextAttemptAt: Date?,
+        error: String?,
+        now: Date = Date()
+    ) throws {
+        try databaseQueue.write {
+            try $0.execute(
+                sql: "UPDATE analysis_jobs SET state = ?, attempt_count = ?, next_attempt_at = ?, last_error = ?, updated_at = ? WHERE id = ?",
+                arguments: [state.rawValue, attemptCount, nextAttemptAt, error, now, id]
+            )
+        }
+    }
+
+    public func analysisJobs(profileID: String? = nil) throws -> [AnalysisJobRecord] {
+        try databaseQueue.read { database in
+            if let profileID {
+                return try AnalysisJobRecord.fetchAll(
+                    database,
+                    sql: "SELECT * FROM analysis_jobs WHERE profile_id = ? ORDER BY created_at DESC",
+                    arguments: [profileID]
+                )
+            }
+            return try AnalysisJobRecord.fetchAll(database, sql: "SELECT * FROM analysis_jobs ORDER BY created_at DESC")
+        }
+    }
+
+    public func purgeMedia(profileID: String, fileManager: FileManager = .default) throws {
+        let paths = try media(profileID: profileID).map(\.filePath)
+        try databaseQueue.write {
+            try $0.execute(sql: "DELETE FROM media WHERE profile_id = ?", arguments: [profileID])
+        }
+        for path in paths where fileManager.fileExists(atPath: path) {
+            try? fileManager.removeItem(atPath: path)
+        }
+    }
+
+    public func deleteProfile(id: String, fileManager: FileManager = .default) throws {
+        try purgeMedia(profileID: id, fileManager: fileManager)
+        try databaseQueue.write { try $0.execute(sql: "DELETE FROM profiles WHERE id = ?", arguments: [id]) }
+    }
+
+    public func deleteAll(fileManager: FileManager = .default) throws {
+        let paths = try databaseQueue.read { try String.fetchAll($0, sql: "SELECT file_path FROM media") }
+        try databaseQueue.write { database in
+            try database.execute(sql: "DELETE FROM analysis_jobs")
+            try database.execute(sql: "DELETE FROM analysis_runs")
+            try database.execute(sql: "DELETE FROM media")
+            try database.execute(sql: "DELETE FROM profiles")
+        }
+        for path in paths where fileManager.fileExists(atPath: path) { try? fileManager.removeItem(atPath: path) }
+    }
+
+    private static func queryParts(_ query: ProfileQuery) -> (whereSQL: String, arguments: StatementArguments) {
+        var clauses: [String] = []
+        var arguments = StatementArguments()
+        if !query.search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            clauses.append("(username_normalized LIKE ? OR display_name LIKE ?)")
+            let value = "%\(query.search.lowercased())%"
+            arguments += [value, value]
+        }
+        Self.appendSetFilter(column: "mbti", values: query.mbti.map(\.rawValue), clauses: &clauses, arguments: &arguments)
+        Self.appendSetFilter(column: "mbti_group", values: query.groups.map(\.rawValue), clauses: &clauses, arguments: &arguments)
+        Self.appendSetFilter(column: "status", values: query.statuses.map(\.rawValue), clauses: &clauses, arguments: &arguments)
+        if let minimumAge = query.minimumAge { clauses.append("age >= ?"); arguments += [minimumAge] }
+        if let maximumAge = query.maximumAge { clauses.append("age <= ?"); arguments += [maximumAge] }
+        if let city = query.city, !city.isEmpty { clauses.append("city_normalized = ?"); arguments += [city] }
+        if query.secondaryHighPriorityOnly {
+            clauses.append("mbti_group = 'secondary' AND (face_score >= 82 OR lifestyle_score >= 82 OR overall_score >= 76)")
+        }
+        if let value = query.minimumFaceScore { clauses.append("face_score >= ?"); arguments += [value] }
+        if let value = query.minimumLifestyleScore { clauses.append("lifestyle_score >= ?"); arguments += [value] }
+        if let value = query.minimumOverallScore { clauses.append("overall_score >= ?"); arguments += [value] }
+        if let value = query.minimumConfidence { clauses.append("analysis_confidence >= ?"); arguments += [value] }
+        if query.usableFaceRequired {
+            clauses.append("EXISTS (SELECT 1 FROM media WHERE media.profile_id = profiles.id AND media.usable_face = 1 AND media.retained = 1)")
+        }
+        return (clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND "), arguments)
+    }
+
+    private static func appendSetFilter(
+        column: String,
+        values: [String],
+        clauses: inout [String],
+        arguments: inout StatementArguments
+    ) {
+        guard !values.isEmpty else { return }
+        clauses.append("\(column) IN (\(Array(repeating: "?", count: values.count).joined(separator: ",")))")
+        arguments += StatementArguments(values)
     }
 
     private static var migrator: DatabaseMigrator {
@@ -84,6 +653,32 @@ public final class ProfileRepository: @unchecked Sendable {
                 table.column("error", .text)
             }
         }
+        migrator.registerMigration("v2-offline-analysis-queue") { database in
+            try database.create(table: "analysis_jobs") { table in
+                table.column("id", .text).primaryKey()
+                table.column("profile_id", .text).notNull().indexed().references("profiles", onDelete: .cascade)
+                table.column("analysis_type", .text).notNull()
+                table.column("model_name", .text).notNull()
+                table.column("prompt_version", .text).notNull()
+                table.column("media_paths", .text).notNull()
+                table.column("state", .text).notNull().indexed()
+                table.column("attempt_count", .integer).notNull().defaults(to: 0)
+                table.column("next_attempt_at", .datetime).indexed()
+                table.column("last_error", .text)
+                table.column("created_at", .datetime).notNull()
+                table.column("updated_at", .datetime).notNull()
+            }
+        }
         return migrator
+    }
+}
+
+public enum RepositoryError: Error, LocalizedError, Sendable {
+    case emptyUsername
+
+    public var errorDescription: String? {
+        switch self {
+        case .emptyUsername: "A normalized username is required before a profile can be persisted."
+        }
     }
 }

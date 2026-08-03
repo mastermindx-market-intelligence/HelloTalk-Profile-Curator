@@ -7,6 +7,7 @@ public enum WindowCaptureError: Error, LocalizedError, Sendable {
     case windowNotOnScreen(CGWindowID)
     case invalidWindowSize(CGSize)
     case invalidBurstFrameCount(Int)
+    case windowResized(expected: CGSize, actual: CGSize)
 
     public var errorDescription: String? {
         switch self {
@@ -18,6 +19,30 @@ public enum WindowCaptureError: Error, LocalizedError, Sendable {
             "The mirrored window has an invalid size: \(Int(size.width))×\(Int(size.height))."
         case .invalidBurstFrameCount(let count):
             "A capture burst needs at least one frame; received \(count)."
+        case .windowResized(let expected, let actual):
+            "The mirrored window resized from \(Int(expected.width))×\(Int(expected.height)) to \(Int(actual.width))×\(Int(actual.height)). Start a new calibrated session."
+        }
+    }
+}
+
+public struct WindowGeometryGuard: Sendable {
+    public let baselineWindowID: CGWindowID
+    public let baselineSize: CGSize
+    public let tolerancePoints: CGFloat
+
+    public init(frame: CapturedWindowFrame, tolerancePoints: CGFloat = 1) {
+        baselineWindowID = frame.windowID
+        baselineSize = frame.windowFrame.size
+        self.tolerancePoints = max(0, tolerancePoints)
+    }
+
+    public func validate(_ frame: CapturedWindowFrame) throws {
+        guard frame.windowID == baselineWindowID else {
+            throw WindowCaptureError.windowNoLongerAvailable(baselineWindowID)
+        }
+        guard abs(frame.windowFrame.width - baselineSize.width) <= tolerancePoints,
+              abs(frame.windowFrame.height - baselineSize.height) <= tolerancePoints else {
+            throw WindowCaptureError.windowResized(expected: baselineSize, actual: frame.windowFrame.size)
         }
     }
 }

@@ -3,8 +3,20 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var model: InspectorViewModel
+    @StateObject private var dashboardModel = ReviewDashboardViewModel()
 
     var body: some View {
+        TabView {
+            inspectorWorkspace
+                .tabItem { Label("Inspector", systemImage: "viewfinder") }
+            ReviewDashboardView(model: dashboardModel)
+                .tabItem { Label("Review", systemImage: "rectangle.grid.2x2") }
+            LocalDataSettingsView(model: dashboardModel)
+                .tabItem { Label("Settings", systemImage: "gearshape") }
+        }
+    }
+
+    private var inspectorWorkspace: some View {
         VStack(spacing: 0) {
             toolbar
             Divider()
@@ -91,6 +103,7 @@ struct ContentView: View {
                 overlaySection
                 calibrationSection
                 parsedSection
+                collectionSection
                 eventLogSection
                 observationSection
             }
@@ -332,6 +345,32 @@ struct ContentView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var collectionSection: some View {
+        GroupBox("Local collection checkpoint") {
+            VStack(alignment: .leading, spacing: 8) {
+                let decision = model.profileEligibilityDecision
+                LabeledContent("Opened-profile gate", value: eligibilityLabel(decision))
+                Text("Metadata accumulates across captured profile-top and Personal Info frames for the same verified username.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Checkpoint verified profile + current Mac frame") {
+                    model.checkpointVerifiedProfile()
+                }
+                .disabled(!model.canCheckpointProfile)
+                Text(model.collectionStatus).font(.caption).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func eligibilityLabel(_ decision: ProfileEligibilityDecision) -> String {
+        switch decision {
+        case .collectPrimary: "Primary · eligible"
+        case .collectSecondary: "Secondary · eligible"
+        case .routingOnly(let reason): "Routing only · \(reason)"
         }
     }
 
