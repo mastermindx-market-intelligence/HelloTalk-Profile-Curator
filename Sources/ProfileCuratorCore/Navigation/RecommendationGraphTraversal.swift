@@ -14,6 +14,7 @@ public struct VisibleRecommendationCandidate: Hashable, Sendable {
 
 public enum RecommendationTraversalDecision: Equatable, Sendable {
     case openForTargetVerification
+    case openForEligibilityInspection
     case openAsRoutingOnly
     case skipDuplicate
     case rejectNonFemaleHint
@@ -21,7 +22,7 @@ public enum RecommendationTraversalDecision: Equatable, Sendable {
 
     public var isOpenProposal: Bool {
         switch self {
-        case .openForTargetVerification, .openAsRoutingOnly:
+        case .openForTargetVerification, .openForEligibilityInspection, .openAsRoutingOnly:
             true
         default:
             false
@@ -46,7 +47,14 @@ public struct RecommendationTraversalLedger: Sendable {
 
     public func decision(for candidate: VisibleRecommendationCandidate) -> RecommendationTraversalDecision {
         guard !visitedProfileKeys.contains(candidate.profileKey) else { return .skipDuplicate }
-        guard candidate.genderHint == .female else { return .rejectNonFemaleHint }
+        guard candidate.genderHint != .male else { return .rejectNonFemaleHint }
+
+        if candidate.genderHint == .unknown {
+            guard routingDepth < maximumRoutingDepth else {
+                return .routingDepthLimitReached(maximumRoutingDepth)
+            }
+            return .openForEligibilityInspection
+        }
 
         if let age = candidate.displayedAge, (18...21).contains(age) {
             return .openForTargetVerification
@@ -63,8 +71,14 @@ public struct RecommendationTraversalLedger: Sendable {
     ) {
         guard decision.isOpenProposal else { return }
         visitedProfileKeys.insert(candidate.profileKey)
-        if decision == .openAsRoutingOnly {
+        if decision == .openAsRoutingOnly || decision == .openForEligibilityInspection {
             routingDepth += 1
         }
+    }
+
+    public mutating func recordVerifiedProfileKey(_ profileKey: String) {
+        let normalized = profileKey.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return }
+        visitedProfileKeys.insert(normalized)
     }
 }

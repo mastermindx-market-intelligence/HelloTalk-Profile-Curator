@@ -12,7 +12,7 @@
 - [x] Normalized action/exclusion preview model
 - [x] Add supervised private fixture screenshots (ignored locally; never committed)
 - [x] Tune parsers against short/long real profiles
-- [ ] Associate recommendation ages with real card rectangles
+- [x] Associate visible card names, optional ages, and photo-safe rectangles
 
 Exit evidence: unit tests plus successful replay of the supervised fixture set.
 
@@ -34,7 +34,7 @@ Exit evidence: unit tests plus successful replay of the supervised fixture set.
 
 Exit evidence: profile-to-Personal-Info-to-Suggestions traversal in dry-run/step mode with no social control activated.
 
-Remaining implementation gate: associate missing-age cards with photo/name geometry and connect accepted dry-run proposals to the identity-change state transition.
+The visible-card proposal path now associates missing-age cards by name geometry and automatically verifies identity changes before committing graph traversal state.
 
 ## Phase 3 — primary collection MVP
 

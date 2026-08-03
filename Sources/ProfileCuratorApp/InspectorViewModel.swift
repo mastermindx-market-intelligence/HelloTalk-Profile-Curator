@@ -32,6 +32,8 @@ final class InspectorViewModel: ObservableObject {
     @Published var galleryGestureStatus = "Visible-card profile hopping is active"
     @Published var proposedVisibleCardTarget: VisibleRecommendationTarget?
     @Published var visibleCardProposalStatus = "No visible-card proposal"
+    @Published var recommendationLedger = RecommendationTraversalLedger()
+    @Published var pendingGraphDecision: RecommendationTraversalDecision?
 
     let previewExclusions = DefaultInspectorCalibration.previewExclusions
 
@@ -52,6 +54,7 @@ final class InspectorViewModel: ObservableObject {
     private let eventStore: NavigationEventLogStore?
     private var currentCGImage: CGImage?
     private var lastProfileUsername: String?
+    private var pendingGraphCandidate: VisibleRecommendationCandidate?
 
     init() {
         eventStore = try? NavigationEventLogStore.defaultStore()
@@ -141,7 +144,7 @@ final class InspectorViewModel: ObservableObject {
     }
 
     var discoveryTraversalStatus: String {
-        "Visible-card graph · max depth \(discoveryPolicy.maximumRoutingDepth)"
+        "Visible-card graph · \(recommendationLedger.visitedProfileKeys.count) visited · depth \(recommendationLedger.routingDepth)/\(discoveryPolicy.maximumRoutingDepth)"
     }
 
     func chooseFixture() {
@@ -327,21 +330,52 @@ final class InspectorViewModel: ObservableObject {
         let targets = visibleRecommendationTargets
         guard !targets.isEmpty else {
             proposedVisibleCardTarget = nil
-            visibleCardProposalStatus = "Blocked · no age-anchored visible recommendation photo found"
+            visibleCardProposalStatus = "Blocked · no name- or age-anchored visible recommendation photo found"
             recordEvent(.proposal, summary: visibleCardProposalStatus)
             return
         }
 
-        let target = targets.first(where: { (18...21).contains($0.displayedAge) }) ?? targets[0]
+        guard let currentUsername = observationSnapshot?.username else {
+            proposedVisibleCardTarget = nil
+            visibleCardProposalStatus = "Blocked · current username is unavailable, so identity change cannot be verified"
+            recordEvent(.proposal, summary: visibleCardProposalStatus)
+            return
+        }
+
+        let proposals = targets.compactMap { target -> (VisibleRecommendationTarget, VisibleRecommendationCandidate, RecommendationTraversalDecision)? in
+            let candidate = VisibleRecommendationCandidate(
+                profileKey: target.profileKey,
+                displayedAge: target.displayedAge,
+                genderHint: .unknown
+            )
+            let graphDecision = recommendationLedger.decision(for: candidate)
+            return graphDecision.isOpenProposal ? (target, candidate, graphDecision) : nil
+        }
+        guard let proposal = proposals.first(where: { $0.0.displayedAge.map { (18...21).contains($0) } == true })
+                ?? proposals.first else {
+            proposedVisibleCardTarget = nil
+            visibleCardProposalStatus = "Blocked · every visible card is already visited or exceeds the routing limit"
+            recordEvent(.proposal, summary: visibleCardProposalStatus)
+            return
+        }
+
+        let (target, candidate, graphDecision) = proposal
         proposedVisibleCardTarget = target
         sessionState.recordProposal(policy: sessionPolicy)
-        let decision = previewDecision
-        if let rejection = decision.rejection {
-            visibleCardProposalStatus = "Age \(target.displayedAge) · blocked: \(actionRejectionDescription(rejection))"
+        let safetyDecision = previewDecision
+        let ageLabel = target.displayedAge.map(String.init) ?? "unknown"
+        if let rejection = safetyDecision.rejection, rejection != .dryRunRequired {
+            pendingGraphCandidate = nil
+            pendingGraphDecision = nil
+            visibleCardProposalStatus = "\(target.profileKey) · age \(ageLabel) · blocked: \(actionRejectionDescription(rejection))"
         } else {
-            visibleCardProposalStatus = "Age \(target.displayedAge) · geometry accepted"
+            pendingGraphCandidate = candidate
+            pendingGraphDecision = graphDecision
+            pendingPostcondition = .profileIdentityChanged(previousUsername: currentUsername)
+            lastPostconditionResult = nil
+            visibleCardProposalStatus = "\(target.profileKey) · age \(ageLabel) · safe photo geometry; identity check armed"
         }
-        recordEvent(.proposal, summary: "Visible-card photo proposed for displayed age \(target.displayedAge)")
+        recordEvent(.proposal, summary: "Visible-card photo proposed for \(target.profileKey), displayed age \(ageLabel)")
         recordEvent(.safetyDecision, summary: visibleCardProposalStatus)
         recordSessionPauseIfNeeded()
     }
@@ -383,6 +417,9 @@ final class InspectorViewModel: ObservableObject {
         galleryGestureStatus = "Visible-card profile hopping is active"
         proposedVisibleCardTarget = nil
         visibleCardProposalStatus = "No visible-card proposal"
+        recommendationLedger = RecommendationTraversalLedger()
+        pendingGraphCandidate = nil
+        pendingGraphDecision = nil
         navigationState = screenClassification?.navigationState ?? .identifyCurrentScreen
         recordEvent(.sessionReset, summary: "Started a new dry-run session")
     }
@@ -504,10 +541,21 @@ final class InspectorViewModel: ObservableObject {
         }
 
         if let pendingPostcondition {
-            let result = postconditionEvaluator.evaluate(pendingPostcondition, against: snapshot)
-            lastPostconditionResult = result
+            let postconditionResult = postconditionEvaluator.evaluate(pendingPostcondition, against: snapshot)
+            lastPostconditionResult = postconditionResult
             self.pendingPostcondition = nil
-            recordEvent(.postcondition, summary: "\(result.status.rawValue) · \(result.summary)")
+            if postconditionResult.status == .passed,
+               let candidate = pendingGraphCandidate,
+               let decision = pendingGraphDecision {
+                recommendationLedger.recordOpened(candidate, decision: decision)
+                if let username = snapshot.username {
+                    recommendationLedger.recordVerifiedProfileKey(username)
+                }
+                recordEvent(.transition, summary: "Verified graph hop to \(snapshot.username ?? candidate.profileKey)")
+            }
+            pendingGraphCandidate = nil
+            pendingGraphDecision = nil
+            recordEvent(.postcondition, summary: "\(postconditionResult.status.rawValue) · \(postconditionResult.summary)")
         }
 
         if sessionState.pauseReason == .emergencyStop {

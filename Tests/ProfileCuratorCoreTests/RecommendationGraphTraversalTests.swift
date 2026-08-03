@@ -40,16 +40,21 @@ final class RecommendationGraphTraversalTests: XCTestCase {
         XCTAssertEqual(ledger.decision(for: candidate), .skipDuplicate)
     }
 
-    func testNonFemaleHintAndDepthLimitFailClosed() {
+    func testUnknownGenderCanOnlyOpenForEligibilityInspection() {
         XCTAssertEqual(
             RecommendationTraversalLedger().decision(for: VisibleRecommendationCandidate(
                 profileKey: "unknown",
                 displayedAge: 20,
                 genderHint: .unknown
             )),
-            .rejectNonFemaleHint
+            .openForEligibilityInspection
         )
 
+        let male = VisibleRecommendationCandidate(profileKey: "male", displayedAge: 20, genderHint: .male)
+        XCTAssertEqual(RecommendationTraversalLedger().decision(for: male), .rejectNonFemaleHint)
+    }
+
+    func testDepthLimitFailsClosed() {
         let ledger = RecommendationTraversalLedger(routingDepth: 2, maximumRoutingDepth: 2)
         XCTAssertEqual(
             ledger.decision(for: VisibleRecommendationCandidate(
@@ -59,5 +64,11 @@ final class RecommendationGraphTraversalTests: XCTestCase {
             )),
             .routingDepthLimitReached(2)
         )
+    }
+
+    func testVerifiedUsernameIsAlsoDeduplicated() {
+        var ledger = RecommendationTraversalLedger()
+        ledger.recordVerifiedProfileKey("@New_Profile")
+        XCTAssertTrue(ledger.visitedProfileKeys.contains("@new_profile"))
     }
 }

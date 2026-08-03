@@ -25,6 +25,7 @@ For each fixture, add a sibling JSON manifest when practical:
   "expectedAge": 21,
   "expectedScreenKind": "profilePersonalInfo",
   "expectedVisibleTargetAges": [21],
+  "expectedVisibleTargetKeys": ["visible_card_name"],
   "expectedLocationCity": "Shenyang",
   "expectedNearbyCount": 576,
   "notes": "Long hobbies section; requires several vertical scrolls"
@@ -36,3 +37,5 @@ For an animated label, store each phase as a separate ignored image/manifest. Lo
 Synthetic or fully anonymized regression fixtures may later be committed under `fixtures/synthetic/`.
 
 Private manifests are replayed automatically by `PrivateFixtureReplayTests` when present. The test skips cleanly on machines that do not have the ignored private fixture library.
+
+Visible target keys are normalized card names. Ages are optional because some rendered recommendation cards omit the age badge.

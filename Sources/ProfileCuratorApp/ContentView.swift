@@ -233,8 +233,10 @@ struct ContentView: View {
 
                 if !model.visibleRecommendationTargets.isEmpty {
                     LabeledContent(
-                        "Age-anchored photos",
-                        value: model.visibleRecommendationTargets.map { String($0.displayedAge) }.joined(separator: ", ")
+                        "Visible photo targets",
+                        value: model.visibleRecommendationTargets.map {
+                            "\($0.profileKey) (\($0.displayedAge.map(String.init) ?? "age ?"))"
+                        }.joined(separator: ", ")
                     )
                 }
                 if !model.dynamicSocialExclusions.isEmpty {

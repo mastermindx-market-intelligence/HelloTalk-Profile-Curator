@@ -18,6 +18,25 @@ final class VisibleRecommendationTargetDetectorTests: XCTestCase {
         XCTAssertEqual(target.plannedAction.kind, .openRecommendationCard)
     }
 
+    func testAssociatesNamedCardsAndKeepsMissingAgeCardInspectable() throws {
+        let observations = [
+            observation("Suggested for You", x: 0.06, y: 0.50, width: 0.42, height: 0.04),
+            observation("kk", x: 0.12, y: 0.70, width: 0.08, height: 0.03),
+            observation("922", x: 0.21, y: 0.70, width: 0.05, height: 0.03),
+            observation("looooyii", x: 0.52, y: 0.70, width: 0.15, height: 0.03),
+            observation("Say Hi", x: 0.10, y: 0.80, width: 0.12, height: 0.03),
+            observation("Follow", x: 0.52, y: 0.80, width: 0.12, height: 0.03)
+        ]
+
+        let targets = VisibleRecommendationTargetDetector().targets(in: observations)
+        let first = try XCTUnwrap(targets.first { $0.profileKey == "kk" })
+        let second = try XCTUnwrap(targets.first { $0.profileKey == "looooyii" })
+
+        XCTAssertEqual(first.displayedAge, 22)
+        XCTAssertNil(second.displayedAge)
+        XCTAssertEqual(targets.count, 2)
+    }
+
     func testRequiresSuggestedAnchorAndRejectsAgesBelowSocialBand() {
         let noAnchor = [observation("919", x: 0.2, y: 0.6, width: 0.05, height: 0.03)]
         XCTAssertTrue(VisibleRecommendationTargetDetector().targets(in: noAnchor).isEmpty)

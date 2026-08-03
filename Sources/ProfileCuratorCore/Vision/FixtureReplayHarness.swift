@@ -13,6 +13,7 @@ public struct FixtureManifest: Codable, Sendable {
     public let expectedNearbyCount: Int?
     public let expectedScreenKind: DetectedScreenKind?
     public let expectedVisibleTargetAges: [Int]?
+    public let expectedVisibleTargetKeys: [String]?
     public let minimumFaces: Int?
     public let notes: String?
 
@@ -27,6 +28,7 @@ public struct FixtureManifest: Codable, Sendable {
         expectedNearbyCount: Int? = nil,
         expectedScreenKind: DetectedScreenKind? = nil,
         expectedVisibleTargetAges: [Int]? = nil,
+        expectedVisibleTargetKeys: [String]? = nil,
         minimumFaces: Int? = nil,
         notes: String? = nil
     ) {
@@ -40,6 +42,7 @@ public struct FixtureManifest: Codable, Sendable {
         self.expectedNearbyCount = expectedNearbyCount
         self.expectedScreenKind = expectedScreenKind
         self.expectedVisibleTargetAges = expectedVisibleTargetAges
+        self.expectedVisibleTargetKeys = expectedVisibleTargetKeys
         self.minimumFaces = minimumFaces
         self.notes = notes
     }
@@ -55,6 +58,7 @@ public struct FixtureManifest: Codable, Sendable {
         case expectedNearbyCount
         case expectedScreenKind
         case expectedVisibleTargetAges
+        case expectedVisibleTargetKeys
         case minimumFaces
         case notes
     }
@@ -71,6 +75,7 @@ public struct FixtureManifest: Codable, Sendable {
         expectedNearbyCount = try container.decodeIfPresent(Int.self, forKey: .expectedNearbyCount)
         expectedScreenKind = try container.decodeIfPresent(DetectedScreenKind.self, forKey: .expectedScreenKind)
         expectedVisibleTargetAges = try container.decodeIfPresent([Int].self, forKey: .expectedVisibleTargetAges)
+        expectedVisibleTargetKeys = try container.decodeIfPresent([String].self, forKey: .expectedVisibleTargetKeys)
         minimumFaces = try container.decodeIfPresent(Int.self, forKey: .minimumFaces)
         notes = try container.decodeIfPresent(String.self, forKey: .notes)
     }
@@ -239,6 +244,13 @@ public struct FixtureReplayHarness: Sendable {
             failures.append(
                 "Expected visible photo target age \(expectedAge), got \(visibleRecommendationTargets.map(\.displayedAge)); "
                     + "gallery=\(galleryBounds.map(String.init(describing:)) ?? "none"), ages=\(ageDebug)"
+            )
+        }
+
+        for expectedKey in manifest.expectedVisibleTargetKeys ?? []
+        where !visibleRecommendationTargets.contains(where: { $0.profileKey == expectedKey.lowercased() }) {
+            failures.append(
+                "Expected visible photo target key \(expectedKey), got \(visibleRecommendationTargets.map(\.profileKey))"
             )
         }
 
