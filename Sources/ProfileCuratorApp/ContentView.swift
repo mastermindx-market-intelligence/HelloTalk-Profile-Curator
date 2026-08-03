@@ -200,6 +200,7 @@ struct ContentView: View {
                 LabeledContent("Session", value: model.sessionStatus)
                 LabeledContent("Profiles", value: "\(model.sessionState.profileVisitCount)")
                 LabeledContent("Unknown streak", value: "\(model.sessionState.consecutiveUnknownScreens)")
+                LabeledContent("Traversal", value: model.discoveryTraversalStatus)
 
                 if let classification = model.screenClassification {
                     LabeledContent(
@@ -215,9 +216,8 @@ struct ContentView: View {
 
                 Divider()
 
-                Button("Propose gallery swipe") {
-                    model.proposeGalleryGesture()
-                }
+                Label("Horizontal carousel disabled", systemImage: "hand.raised.fill")
+                    .foregroundStyle(.orange)
                 Text(model.galleryGestureStatus)
                     .font(.caption)
                     .foregroundStyle(.secondary)

@@ -90,5 +90,10 @@ final class ActionSafetyTests: XCTestCase {
         XCTAssertTrue(policy.customSearchActiveUsersOnly)
         XCTAssertTrue(policy.reverifyAgeAndGenderOnEveryProfile)
         XCTAssertTrue(policy.sameGenderRecommendationIsHintOnly)
+        XCTAssertEqual(policy.primaryTraversalMode, .visibleCardGraph)
+        XCTAssertFalse(policy.horizontalCarouselEnabledByDefault)
+        XCTAssertEqual(policy.maximumRoutingDepth, 12)
+        XCTAssertEqual(policy.verticalTraversalMode, .discreteScrollEvents)
+        XCTAssertFalse(policy.touchDragGesturesEnabledByDefault)
     }
 }

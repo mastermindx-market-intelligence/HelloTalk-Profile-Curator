@@ -50,7 +50,9 @@ All coordinates use top-left origin and normalized `0...1` values relative to th
 - Open/close Moment viewer flow: tap a photo thumbnail; `×` appears upper left while chrome is visible. When chrome hides, tap the black background once, wait briefly for `×`, then close within its roughly three-second visibility window.
 - Multi-photo swipe behavior: unresolved. Both Computer Use horizontal scroll directions left the first pagination dot active and hid viewer chrome. Do not automate until a supervised gesture is confirmed.
 - Return from Moments to About Me: direct About Me tab click succeeded.
-- Carousel horizontal inventory: confirmed below Hometown on the age-18 INTP profile. Exact automated horizontal drag geometry remains fail-closed until a repeatable gesture/postcondition pair is calibrated.
+- Carousel horizontal inventory: cards are visible, but horizontal motion is unavailable in the current iPhone Mirroring session. Manual click-drag produced no movement; a Computer Use horizontal scroll shifted the entire profile sheet instead of the row and was immediately reversed. Keep horizontal gestures disabled.
+- Vertical input distinction: manual touch-style drag also does not move the profile, while discrete keyboard/scroll events work reliably. Use only discrete vertical scroll events.
+- Verified traversal fallback: safely clicking Mia's visible profile photo changed identity from the current profile to `@e_mia760`; Mia's profile exposed a fresh Suggested for You row containing Camilla (female 27) and Tonia (female 22). Both were rejected for collection. This validates visible-card graph traversal without carousel motion.
 - Safe recommendation-card click target: avatar center on the far left of a Connect row opened the profile and remained far from the purple wave/Say Hi control.
 - Reliable profile-changed postcondition: the profile side sheet first appeared, then the full profile exposed name, handle, age/gender badge, map, and tabs.
 - Popup/ad recovery observations: a Wise ad row appeared in Connect; it was not clicked. Ads must be skipped as whole-card exclusion regions.

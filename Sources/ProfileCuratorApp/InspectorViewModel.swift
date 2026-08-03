@@ -29,7 +29,7 @@ final class InspectorViewModel: ObservableObject {
     @Published var navigationEvents: [NavigationEvent] = []
     @Published var sessionState = NavigationSessionState()
     @Published var galleryGesture: PlannedGesture?
-    @Published var galleryGestureStatus = "No proposal"
+    @Published var galleryGestureStatus = "Visible-card profile hopping is active"
 
     let previewAction = DefaultInspectorCalibration.previewAction
     let previewExclusions = DefaultInspectorCalibration.previewExclusions
@@ -45,6 +45,7 @@ final class InspectorViewModel: ObservableObject {
     private let postconditionEvaluator = NavigationPostconditionEvaluator()
     private let galleryGesturePlanner = GalleryGesturePlanner()
     private let sessionPolicy = NavigationSessionPolicy.conservativeDefault
+    private let discoveryPolicy = DiscoveryPolicy.observedDefault
     private let eventStore: NavigationEventLogStore?
     private var currentCGImage: CGImage?
     private var lastProfileUsername: String?
@@ -116,6 +117,10 @@ final class InspectorViewModel: ObservableObject {
     var sessionStatus: String {
         if let reason = sessionState.pauseReason { return "Paused · \(reason.summary)" }
         return "Dry run · \(sessionState.proposalCount)/\(sessionPolicy.maximumProposals) proposals"
+    }
+
+    var discoveryTraversalStatus: String {
+        "Visible-card graph · max depth \(discoveryPolicy.maximumRoutingDepth)"
     }
 
     func chooseFixture() {
@@ -273,6 +278,12 @@ final class InspectorViewModel: ObservableObject {
     }
 
     func proposeGalleryGesture() {
+        guard discoveryPolicy.horizontalCarouselEnabledByDefault else {
+            galleryGesture = nil
+            galleryGestureStatus = "Blocked · horizontal motion failed supervised mirroring validation; use visible-card graph traversal"
+            recordEvent(.safetyDecision, summary: galleryGestureStatus)
+            return
+        }
         galleryGesture = galleryGesturePlanner.proposal(from: calibrationMarks)
         guard galleryGesture != nil else {
             galleryGestureStatus = "Blocked · draw a Profile / Carousel gesture zone first"
@@ -325,7 +336,7 @@ final class InspectorViewModel: ObservableObject {
         pendingPostcondition = nil
         lastPostconditionResult = nil
         galleryGesture = nil
-        galleryGestureStatus = "No proposal"
+        galleryGestureStatus = "Visible-card profile hopping is active"
         navigationState = screenClassification?.navigationState ?? .identifyCurrentScreen
         recordEvent(.sessionReset, summary: "Started a new dry-run session")
     }

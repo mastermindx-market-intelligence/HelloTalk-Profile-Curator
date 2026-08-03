@@ -13,7 +13,9 @@ The action plane remains disabled until the observation plane is validated again
 
 ## Discovery strategy
 
-The observed 2026-08-03 UI makes the in-profile **Suggested for You** horizontal gallery the primary inventory engine. It exposes a broader, recently-active pool and tends to preserve gender similarity from a female seed profile. That similarity is only a routing hint: every opened profile still requires an explicit female badge and age 18–21 verification.
+The observed 2026-08-03 UI makes the in-profile **Suggested for You** row the primary inventory engine. It exposes a broader, recently-active pool and tends to preserve gender similarity from a female seed profile. That similarity is only a routing hint: every opened profile still requires an explicit female badge and age 18–21 verification.
+
+Horizontal motion did not work in the supervised iPhone Mirroring session: click-drag produced no movement, and a window-level horizontal scroll shifted the whole profile rather than the card row. The reliable traversal is therefore a bounded visible-card graph. Open a visible recommendation by its photo, verify the changed profile identity, and use that profile's fresh Suggested for You row as the next inventory page. An age-ineligible or age-missing female profile may be a routing-only node but is never accepted or collected. Usernames are deduplicated and routing depth is capped at 12.
 
 Custom Search is a seed/fallback path, not the main traversal loop. Its results are restricted to currently active users, its rows omit exact age/gender, and selecting the Female filter opened a paid subscription offer during supervised testing. The safe loop is therefore:
 
@@ -22,8 +24,11 @@ Acquire female age-18–21 seed through age-filtered Custom Search or Connect
   -> verify opened profile age and female badge
   -> scan About Me for target MBTI
   -> seek Suggested for You at profile bottom
-  -> traverse horizontal gallery as primary inventory
-  -> re-verify every opened profile
+  -> inspect visible gallery cards
+  -> open a safe visible photo and verify profile identity changed
+  -> re-verify age and female badge on every opened profile
+  -> collect only eligible targets; otherwise mark the node routing-only
+  -> use the new profile's visible gallery as the next inventory page
   -> return to a seed feed only when the gallery is absent or exhausted
 ```
 
@@ -81,7 +86,7 @@ An input action may eventually execute only if all gates pass:
 
 The runtime records the observation, plan, validation result, action, and postcondition as separate events.
 
-Dry-run gesture proposals are complete paths rather than single points. Both endpoints must remain inside the dedicated gesture region, and the entire segment is tested against each exclusion rectangle. The Inspector cannot emit input; even a confirmed safe path terminates at the dry-run gate.
+Dry-run gesture proposals are complete paths rather than single points. Both endpoints must remain inside the dedicated gesture region, and the entire segment is tested against each exclusion rectangle. The Inspector cannot emit input; even a confirmed safe path terminates at the dry-run gate. Horizontal and touch-drag proposals remain disabled by observed policy; vertical navigation uses discrete scroll events only.
 
 The default session pauses after 100 proposals, 25 profile visits, 30 minutes, or two consecutive unknown screens. STOP latches immediately. Recovery always begins with an explicit new dry-run session rather than silently clearing a pause.
 

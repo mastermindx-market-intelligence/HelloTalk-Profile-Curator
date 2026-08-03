@@ -23,8 +23,9 @@ Exit evidence: unit tests plus successful replay of the supervised fixture set.
 - [x] Calibration editor for normalized safe and excluded regions (awaiting supervised real-UI calibration)
 - [x] Deterministic OCR/geometry content fingerprint and frame-change postcondition
 - [ ] Mirroring-window resize detection
-- [x] Fail-closed carousel gesture preview (awaiting supervised region calibration)
-- [ ] Vertical scroll gesture preview
+- [x] Fail-closed carousel gesture preview, disabled after supervised mirroring validation failed
+- [x] Discrete vertical scroll path verified; touch-drag gestures disabled as nonfunctional
+- [x] Bounded, deduplicated visible-card graph traversal policy and ledger
 - [x] State/postcondition event log with local JSONL audit trail
 - [x] Latched emergency stop and conservative session caps
 - [x] Supervised UI observations in `docs/ui-observations.md`
@@ -32,7 +33,7 @@ Exit evidence: unit tests plus successful replay of the supervised fixture set.
 
 Exit evidence: profile-to-Personal-Info-to-Suggestions traversal in dry-run/step mode with no social control activated.
 
-Remaining supervised gate: draw and confirm the Suggested for You gesture zone plus fixed social-bar exclusions, manually perform one swipe and validate content change, then open one safe card and validate profile identity change.
+Remaining implementation gate: detect safe visible-card photo targets dynamically, propose one at a time, and validate profile identity change before the next graph hop.
 
 ## Phase 3 — primary collection MVP
 
