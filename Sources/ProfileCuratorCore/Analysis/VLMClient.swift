@@ -185,6 +185,7 @@ public actor OllamaVLMClient: VLMClientProtocol {
             model: configuration.model,
             messages: [ChatMessage(role: "user", content: prompt, images: images.map { $0.base64EncodedString() })],
             stream: false,
+            think: false,
             format: "json",
             options: ["temperature": 0]
         ))
@@ -222,6 +223,7 @@ public actor OllamaVLMClient: VLMClientProtocol {
         let model: String
         let messages: [ChatMessage]
         let stream: Bool
+        let think: Bool
         let format: String
         let options: [String: Double]
     }
