@@ -39,6 +39,15 @@ public struct NavigationStateDetector: Sendable {
     public func classify(_ analysis: FixtureAnalysis) -> ScreenClassification {
         let text = analysis.text.map(\.text).joined(separator: " · ")
 
+        if containsGalleryCounter(in: text)
+            && (contains("Like", in: text) || contains("Comment", in: text) || contains("Moments", in: text)) {
+            return classification(.momentViewer, .inspectMomentViewer, 0.88, ["Media counter", "Moment controls"])
+        }
+        if contains("Moments", in: text)
+            && (contains("Posts", in: text) || contains("Album", in: text) || contains("No moments", in: text)) {
+            return classification(.momentsFeed, .collectMoments, 0.84, ["Moments feed anchors"])
+        }
+
         if contains("AI Photo Gift", in: text) || contains("Avatar Effect", in: text) {
             return classification(.pfpViewer, .inspectPFPViewer, 0.98, ["PFP action rows"])
         }
@@ -75,6 +84,10 @@ public struct NavigationStateDetector: Sendable {
 
     private func contains(_ anchor: String, in text: String) -> Bool {
         OCRAnchorMatcher().contains(anchor: anchor, in: text)
+    }
+
+    private func containsGalleryCounter(in text: String) -> Bool {
+        text.range(of: #"\b\d{1,2}\s*/\s*\d{1,2}\b"#, options: .regularExpression) != nil
     }
 
     private func classification(

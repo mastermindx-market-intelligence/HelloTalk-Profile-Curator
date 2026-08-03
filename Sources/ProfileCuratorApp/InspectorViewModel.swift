@@ -471,10 +471,150 @@ final class InspectorViewModel: ObservableObject {
                 usableFace: usable,
                 retained: false
             )
+            try saveCollectionCheckpoint(profileID: record.id)
             collectionStatus = "Checkpointed \(record.usernameNormalized) locally · visit \(record.visitCount)"
             recordEvent(.transition, summary: collectionStatus)
         } catch {
             collectionStatus = "Checkpoint failed · \(error.localizedDescription)"
+        }
+    }
+
+    func checkpointViewerPhoto() {
+        guard let screen = screenClassification?.kind,
+              let kind = screen == .pfpViewer ? MediaKind.pfp : screen == .momentViewer ? MediaKind.moment : nil,
+              let sourceImage = currentCGImage,
+              let observations = analysis?.text,
+              let region = ViewerPhotoRegionDetector().region(for: screen, observations: observations),
+              let cropped = WindowPhotoCropper().crop(sourceImage, to: region.bounds),
+              let profile = currentCollectedProfile(),
+              let profileRepository,
+              let mediaStore else {
+            collectionStatus = "Blocked · capture a recognized PFP or Moment viewer for a checkpointed profile"
+            return
+        }
+
+        do {
+            let existing = try profileRepository.media(profileID: profile.id)
+            let scannedPhotos = existing.filter { $0.typedKind == .pfp || $0.typedKind == .moment }
+            guard scannedPhotos.count < CollectionLimits.hardenedDefault.maximumScannedPhotos else {
+                collectionStatus = "Blocked · 20-photo scan limit reached"
+                return
+            }
+            let retainedPhotos = scannedPhotos.filter(\.retained)
+            let croppedAnalysis = try analyzer.analyze(cropped)
+            let largest = croppedAnalysis.faces.max {
+                $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height
+            }
+            let area = largest.map { $0.bounds.width * $0.bounds.height } ?? 0
+            let quality = largest?.captureQuality.map(Double.init)
+            let usable = area >= CollectionLimits.hardenedDefault.minimumFaceAreaRatio
+                && (quality ?? 0) >= CollectionLimits.hardenedDefault.minimumFaceCaptureQuality
+            let shouldRetain = retainedPhotos.count < CollectionLimits.hardenedDefault.maximumRetainedPhotos
+            let record = try mediaStore.persist(
+                image: cropped,
+                profileID: profile.id,
+                kind: kind,
+                sourceSequence: scannedPhotos.count + 1,
+                faceCount: croppedAnalysis.faces.count,
+                largestFaceRatio: area,
+                faceCaptureQuality: quality,
+                usableFace: usable,
+                retained: shouldRetain
+            )
+            guard record != nil else {
+                collectionStatus = "Duplicate photo ignored by perceptual hash"
+                return
+            }
+            try saveCollectionCheckpoint(profileID: profile.id)
+            collectionStatus = "Saved \(kind.rawValue) \(scannedPhotos.count + 1)/20 · retained \(shouldRetain ? retainedPhotos.count + 1 : retainedPhotos.count)/10"
+        } catch {
+            collectionStatus = "Photo checkpoint failed · \(error.localizedDescription)"
+        }
+    }
+
+    func finalizeCurrentProfileMedia() {
+        guard let profile = currentCollectedProfile(),
+              let group = profile.typedGroup,
+              let profileRepository else {
+            collectionStatus = "Checkpoint an eligible profile before finalizing media"
+            return
+        }
+        do {
+            let photos = try profileRepository.media(profileID: profile.id).filter {
+                $0.typedKind == .pfp || $0.typedKind == .moment
+            }
+            let candidates = photos.map {
+                MediaCandidate(
+                    perceptualHash: $0.perceptualHash,
+                    faceCount: $0.faceCount,
+                    largestFaceRatio: $0.largestFaceRatio,
+                    captureQuality: $0.faceCaptureQuality,
+                    contextStrength: $0.typedKind == .moment ? 0.5 : 0
+                )
+            }
+            switch NoFacePolicy().decision(group: group, candidates: candidates, feedExhausted: true) {
+            case .rejectAndPurge:
+                try profileRepository.updateStatus(id: profile.id, status: .rejectedNoFace, reason: "no_usable_face_in_pfp_or_scanned_moments")
+                try profileRepository.purgeMedia(profileID: profile.id)
+                collectionStatus = "Rejected no-face · media purged; username tombstone retained"
+            case .retainForReview:
+                try profileRepository.updateStatus(id: profile.id, status: .review)
+                collectionStatus = "Media finalized for local review"
+            case .continueScanning:
+                collectionStatus = "Continue scanning until a usable face, feed bottom, or 20 photos"
+            }
+        } catch {
+            collectionStatus = "Media finalization failed · \(error.localizedDescription)"
+        }
+    }
+
+    func queueCurrentProfileAnalysis() {
+        guard let profile = currentCollectedProfile(), let profileRepository else {
+            collectionStatus = "Checkpoint a profile before queueing analysis"
+            return
+        }
+        do {
+            let media = try profileRepository.media(profileID: profile.id, retainedOnly: true)
+            guard !media.isEmpty else {
+                collectionStatus = "Retain at least one PFP or Moment photo before queueing analysis"
+                return
+            }
+            let config = try VLMConfigurationStore.defaultStore().load()
+            let facePaths = media.filter { $0.usableFace || $0.typedKind == .pfp }.prefix(3).map(\.filePath)
+            let lifestylePaths = media.filter { $0.typedKind == .moment }.prefix(10).map(\.filePath)
+            var queued = 0
+            if !facePaths.isEmpty {
+                _ = try profileRepository.enqueueAnalysis(
+                    profileID: profile.id,
+                    type: .faceVerification,
+                    modelName: config.model,
+                    promptVersion: VLMPromptLibrary.faceVerificationVersion,
+                    mediaPaths: Array(facePaths)
+                )
+                _ = try profileRepository.enqueueAnalysis(
+                    profileID: profile.id,
+                    type: .visualAppeal,
+                    modelName: config.model,
+                    promptVersion: VLMPromptLibrary.visualAppealVersion,
+                    mediaPaths: Array(facePaths)
+                )
+                queued += 2
+            }
+            if !lifestylePaths.isEmpty {
+                _ = try profileRepository.enqueueAnalysis(
+                    profileID: profile.id,
+                    type: .lifestyle,
+                    modelName: config.model,
+                    promptVersion: VLMPromptLibrary.lifestyleVersion,
+                    mediaPaths: Array(lifestylePaths)
+                )
+                queued += 1
+            }
+            collectionStatus = queued == 0
+                ? "No eligible retained media for analysis"
+                : "Queued \(queued) versioned Qwen job\(queued == 1 ? "" : "s") locally"
+        } catch {
+            collectionStatus = "Analysis queue failed · \(error.localizedDescription)"
         }
     }
 
@@ -668,6 +808,32 @@ final class InspectorViewModel: ObservableObject {
         } else {
             windowGeometryGuard = WindowGeometryGuard(frame: frame)
         }
+    }
+
+    private func currentCollectedProfile() -> ProfileRecord? {
+        if let collectedProfileID, let profile = try? profileRepository?.profile(id: collectedProfileID) {
+            return profile
+        }
+        if let username = profileAccumulator.username,
+           let profile = try? profileRepository?.profile(username: username) {
+            return profile
+        }
+        return nil
+    }
+
+    private func saveCollectionCheckpoint(profileID: String) throws {
+        guard let profileRepository else { return }
+        let media = try profileRepository.media(profileID: profileID)
+        let photos = media.filter { $0.typedKind == .pfp || $0.typedKind == .moment }
+        let checkpoint = CollectionCheckpoint(
+            navigation: NavigationSnapshot(state: navigationState, pendingPostcondition: pendingPostcondition),
+            currentUsername: profileAccumulator.username,
+            currentProfileID: profileID,
+            scannedPhotoCount: photos.count,
+            retainedPhotoCount: photos.filter(\.retained).count,
+            perceptualHashes: Set(photos.map(\.perceptualHash))
+        )
+        try CollectionCheckpointStore.defaultStore().save(checkpoint)
     }
 
     private func recordSessionPauseIfNeeded() {

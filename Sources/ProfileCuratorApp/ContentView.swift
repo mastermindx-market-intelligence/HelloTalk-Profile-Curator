@@ -360,6 +360,14 @@ struct ContentView: View {
                     model.checkpointVerifiedProfile()
                 }
                 .disabled(!model.canCheckpointProfile)
+                Button("Save recognized PFP/Moment photo") {
+                    model.checkpointViewerPhoto()
+                }
+                .disabled(model.screenClassification?.kind != .pfpViewer && model.screenClassification?.kind != .momentViewer)
+                HStack {
+                    Button("Finalize media scan") { model.finalizeCurrentProfileMedia() }
+                    Button("Queue Qwen analysis") { model.queueCurrentProfileAnalysis() }
+                }
                 Text(model.collectionStatus).font(.caption).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
