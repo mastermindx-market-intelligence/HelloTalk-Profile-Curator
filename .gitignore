@@ -1,0 +1,15 @@
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+dist/
+*.xcuserstate
+
+# Real HelloTalk screenshots and collected profile media must never be committed.
+fixtures/private/
+fixtures/**/*.private.*
+media/
+diagnostics/
+exports/
+curator.sqlite*
+config.local.json
