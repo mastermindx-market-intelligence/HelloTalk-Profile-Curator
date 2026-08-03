@@ -17,6 +17,7 @@ struct ContentView: View {
                     showFaceBoxes: model.showFaceBoxes,
                     showSafetyPreview: model.showSafetyPreview,
                     action: model.previewAction,
+                    gesture: model.galleryGesture,
                     exclusions: model.previewExclusions,
                     calibrationMode: model.calibrationMode,
                     calibrationMarks: model.calibrationMarks,
@@ -64,11 +65,13 @@ struct ContentView: View {
                 .padding(.vertical, 4)
                 .background(.quaternary, in: Capsule())
 
-            Button("STOP", systemImage: "stop.fill") {}
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .disabled(true)
-                .help("Live input is not implemented in phase 1")
+            Button("STOP", systemImage: "stop.fill") {
+                model.engageEmergencyStop()
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+            .disabled(model.sessionState.pauseReason == .emergencyStop)
+            .help("Latch the dry-run emergency stop and block every proposal")
         }
         .padding(12)
     }
@@ -84,9 +87,11 @@ struct ContentView: View {
 
                 permissionSection
                 windowSection
+                navigationSection
                 overlaySection
                 calibrationSection
                 parsedSection
+                eventLogSection
                 observationSection
             }
             .padding(16)
@@ -179,9 +184,71 @@ struct ContentView: View {
                     .foregroundStyle(.red)
                 Text("Cyan dot: proposed point")
                     .font(.caption)
+                Text("Orange path: proposed gallery swipe")
+                    .font(.caption)
                 Text("Action result: blocked because dry-run is mandatory")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var navigationSection: some View {
+        GroupBox("Dry-run navigation") {
+            VStack(alignment: .leading, spacing: 9) {
+                LabeledContent("Session", value: model.sessionStatus)
+                LabeledContent("Profiles", value: "\(model.sessionState.profileVisitCount)")
+                LabeledContent("Unknown streak", value: "\(model.sessionState.consecutiveUnknownScreens)")
+
+                if let classification = model.screenClassification {
+                    LabeledContent(
+                        "Detected screen",
+                        value: "\(classification.kind.rawValue) · \(Int(classification.confidence * 100))%"
+                    )
+                    if !classification.evidence.isEmpty {
+                        Text(classification.evidence.joined(separator: ", "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Divider()
+
+                Button("Propose gallery swipe") {
+                    model.proposeGalleryGesture()
+                }
+                Text(model.galleryGestureStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if model.galleryGesture != nil {
+                    Button("Arm content-change check") {
+                        model.armGalleryPostcondition()
+                    }
+                    .disabled(model.observationSnapshot == nil)
+                }
+
+                if model.observationSnapshot?.username != nil {
+                    Button("Arm profile-change check") {
+                        model.armProfileChangePostcondition()
+                    }
+                }
+
+                if let result = model.lastPostconditionResult {
+                    Label(
+                        result.summary,
+                        systemImage: result.status == .passed
+                            ? "checkmark.circle.fill"
+                            : result.status == .failed ? "xmark.circle.fill" : "questionmark.circle.fill"
+                    )
+                    .foregroundStyle(result.status == .passed ? .green : result.status == .failed ? .red : .orange)
+                    .font(.caption)
+                }
+
+                Button("New dry-run session") {
+                    model.resetDryRunSession()
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -270,6 +337,7 @@ struct ContentView: View {
 
                 HStack {
                     Button("Observed baseline") { model.loadObservedBaseline() }
+                    Button("Confirm selected") { model.confirmSelectedCalibrationMark() }
                     Button("Undo") { model.undoCalibrationMark() }
                         .disabled(model.calibrationMarks.isEmpty)
                     Button("Clear") { model.clearCalibrationMarks() }
@@ -291,10 +359,43 @@ struct ContentView: View {
                             .frame(width: 7, height: 7)
                         Text(mark.kind.displayName)
                             .font(.caption)
+                        if mark.confirmed {
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundStyle(.green)
+                                .help("Confirmed in the current supervised calibration")
+                        }
                         Spacer()
                         Text(String(format: "%.3f, %.3f", mark.bounds.x, mark.bounds.y))
                             .font(.caption2.monospaced())
                             .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var eventLogSection: some View {
+        GroupBox("Navigation event log") {
+            VStack(alignment: .leading, spacing: 7) {
+                if model.navigationEvents.isEmpty {
+                    Text("Capture or load a frame to begin the audit trail.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(model.navigationEvents.suffix(12).reversed()) { event in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text(event.kind.rawValue)
+                                    .font(.caption.monospaced())
+                                Spacer()
+                                Text(event.occurredAt.formatted(date: .omitted, time: .standard))
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(event.summary)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }

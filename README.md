@@ -24,11 +24,17 @@ The first slice is an offline Inspector. It can:
 - locate the iPhone Mirroring window read-only;
 - capture one macOS-rendered frame from the selected mirroring window for Inspector replay;
 - capture a five-frame burst to resolve the rotating location/nearby badge without conflating its two states;
+- classify known screens, fail closed immediately, and latch the session after two consecutive unknown observations;
+- record observations, proposals, safety decisions, transitions, and postconditions to a local JSONL audit log;
+- preview a complete gallery swipe path and reject it when calibration, exclusions, STOP, session limits, or dry-run policy fail;
+- latch an emergency stop and enforce conservative duration, proposal, and profile-visit limits;
 - show Screen Recording and Accessibility permission status;
 - preview intended action and never-click regions without executing input;
 - draw and save normalized calibration regions over a fixture or captured frame.
 
-No live input events are generated in this phase.
+No live input events are generated in this phase. The orange gallery path is a proposal overlay only.
+
+Dry-run audit logs are written locally under `~/Library/Application Support/ProfileCurator/navigation-logs/`. They contain state and safety metadata, not screenshot pixels.
 
 ## Run
 

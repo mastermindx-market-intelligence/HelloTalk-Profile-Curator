@@ -8,7 +8,9 @@ public enum NavigationState: String, CaseIterable, Codable, Sendable {
     case scanForPersonalInfo
     case evaluateMBTI
     case collectTargetProfile
+    case inspectPFPViewer
     case collectMoments
+    case inspectMomentViewer
     case seekSuggestions
     case scanRecommendationCards
     case swipeCarousel

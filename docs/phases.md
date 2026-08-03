@@ -21,14 +21,18 @@ Exit evidence: unit tests plus successful replay of the supervised fixture set.
 - [x] Capture only the selected iPhone Mirroring window with ScreenCaptureKit (single-frame, read-only)
 - [x] Add a read-only five-frame burst for the rotating location/nearby badge
 - [x] Calibration editor for normalized safe and excluded regions (awaiting supervised real-UI calibration)
-- [ ] Frame-change and resize detection
-- [ ] Scroll and carousel gesture previews
-- [ ] State/postcondition event log
-- [ ] Emergency stop and session caps
+- [x] Deterministic OCR/geometry content fingerprint and frame-change postcondition
+- [ ] Mirroring-window resize detection
+- [x] Fail-closed carousel gesture preview (awaiting supervised region calibration)
+- [ ] Vertical scroll gesture preview
+- [x] State/postcondition event log with local JSONL audit trail
+- [x] Latched emergency stop and conservative session caps
 - [x] Supervised UI observations in `docs/ui-observations.md`
 - [x] Establish gallery-first discovery policy with Custom Search/Connect as seed fallbacks
 
 Exit evidence: profile-to-Personal-Info-to-Suggestions traversal in dry-run/step mode with no social control activated.
+
+Remaining supervised gate: draw and confirm the Suggested for You gesture zone plus fixed social-bar exclusions, manually perform one swipe and validate content change, then open one safe card and validate profile identity change.
 
 ## Phase 3 — primary collection MVP
 

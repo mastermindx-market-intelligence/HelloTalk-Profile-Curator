@@ -9,6 +9,7 @@ struct FixtureCanvas: View {
     let showFaceBoxes: Bool
     let showSafetyPreview: Bool
     let action: PlannedAction
+    let gesture: PlannedGesture?
     let exclusions: [ExclusionZone]
     let calibrationMode: Bool
     let calibrationMarks: [CalibrationMark]
@@ -62,6 +63,31 @@ struct FixtureCanvas: View {
                                 y: fitted.minY + action.point.y * fitted.height
                             )
                             .help(action.rationale)
+
+                        if let gesture {
+                            let start = CGPoint(
+                                x: fitted.minX + gesture.start.x * fitted.width,
+                                y: fitted.minY + gesture.start.y * fitted.height
+                            )
+                            let end = CGPoint(
+                                x: fitted.minX + gesture.end.x * fitted.width,
+                                y: fitted.minY + gesture.end.y * fitted.height
+                            )
+                            Path { path in
+                                path.move(to: start)
+                                path.addLine(to: end)
+                            }
+                            .stroke(.orange, style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [8, 5]))
+                            .help(gesture.rationale)
+
+                            Circle()
+                                .fill(.orange)
+                                .frame(width: 12, height: 12)
+                                .position(start)
+                            Image(systemName: "arrowtriangle.left.fill")
+                                .foregroundStyle(.orange)
+                                .position(end)
+                        }
                     }
 
                     ForEach(calibrationMarks) { mark in

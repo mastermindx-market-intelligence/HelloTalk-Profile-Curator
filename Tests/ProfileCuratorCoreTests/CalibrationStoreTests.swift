@@ -33,4 +33,11 @@ final class CalibrationStoreTests: XCTestCase {
         XCTAssertEqual(restored.marks, [expectedMark])
         XCTAssertEqual(restored.marks.first?.context, .momentViewer)
     }
+
+    func testLegacyMarkWithoutContextDefaultsToProfile() throws {
+        let json = #"{"id":"00000000-0000-0000-0000-000000000001","kind":"safeAvatar","bounds":{"x":0.1,"y":0.2,"width":0.3,"height":0.4},"confirmed":false}"#
+        let mark = try JSONDecoder().decode(CalibrationMark.self, from: Data(json.utf8))
+
+        XCTAssertEqual(mark.context, .profile)
+    }
 }

@@ -51,12 +51,13 @@ ProfileCuratorCore
 │   └── RotatingLocationBadgeParser and LocationNormalizer
 ├── Safety
 │   ├── exclusion zones
-│   ├── action validation
-│   └── emergency-stop policy
+│   ├── point and full-segment gesture validation
+│   └── emergency-stop and session-limit policy
 ├── Navigation
-│   ├── explicit state model
+│   ├── deterministic screen classifier and observation fingerprints
 │   ├── gallery-first discovery policy
-│   └── postconditions/recovery (phase 2)
+│   ├── visible postconditions
+│   └── local JSONL event log
 └── Persistence
     └── GRDB-backed local repository
 ```
@@ -79,6 +80,10 @@ An input action may eventually execute only if all gates pass:
 8. the previous action reached its visible postcondition.
 
 The runtime records the observation, plan, validation result, action, and postcondition as separate events.
+
+Dry-run gesture proposals are complete paths rather than single points. Both endpoints must remain inside the dedicated gesture region, and the entire segment is tested against each exclusion rectangle. The Inspector cannot emit input; even a confirmed safe path terminates at the dry-run gate.
+
+The default session pauses after 100 proposals, 25 profile visits, 30 minutes, or two consecutive unknown screens. STOP latches immediately. Recovery always begins with an explicit new dry-run session rather than silently clearing a pause.
 
 Rotating labels are temporal observations. The map pill alternates between a city/country/local-time label and a nearby-user count every 1–2 seconds, so location capture uses five frames at 700 ms spacing. Only the city phase enters location normalization; nearby counts remain separate metadata.
 

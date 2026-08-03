@@ -85,6 +85,23 @@ public struct CalibrationMark: Identifiable, Codable, Hashable, Sendable {
         self.bounds = bounds
         self.confirmed = confirmed
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case context
+        case kind
+        case bounds
+        case confirmed
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        context = try container.decodeIfPresent(CalibrationContext.self, forKey: .context) ?? .profile
+        kind = try container.decode(CalibrationMarkKind.self, forKey: .kind)
+        bounds = try container.decode(NormalizedRect.self, forKey: .bounds)
+        confirmed = try container.decodeIfPresent(Bool.self, forKey: .confirmed) ?? false
+    }
 }
 
 public enum ObservedHelloTalkCalibration {

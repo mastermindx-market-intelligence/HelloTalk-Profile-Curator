@@ -23,6 +23,7 @@ For each fixture, add a sibling JSON manifest when practical:
   "expectedAnchors": ["Personal Info", "Suggested for You"],
   "expectedMBTI": "INFJ",
   "expectedAge": 21,
+  "expectedScreenKind": "profilePersonalInfo",
   "expectedLocationCity": "Shenyang",
   "expectedNearbyCount": 576,
   "notes": "Long hobbies section; requires several vertical scrolls"

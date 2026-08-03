@@ -50,6 +50,7 @@ public enum ActionSafetyRejection: Equatable, Sendable {
     case outsideRequiredSafeRegion
     case intersectsExclusionZone(String)
     case emergencyStopActive
+    case sessionPaused(String)
     case dryRunRequired
 }
 
@@ -70,6 +71,7 @@ public struct ActionSafetyValidator: Sendable {
         _ action: PlannedAction,
         exclusionZones: [ExclusionZone],
         emergencyStopActive: Bool,
+        sessionPauseReason: String? = nil,
         liveInputEnabled: Bool
     ) -> ActionSafetyDecision {
         guard action.point.isInsideUnitSquare else {
@@ -77,6 +79,9 @@ public struct ActionSafetyValidator: Sendable {
         }
         if emergencyStopActive {
             return ActionSafetyDecision(isAllowed: false, rejection: .emergencyStopActive)
+        }
+        if let sessionPauseReason {
+            return ActionSafetyDecision(isAllowed: false, rejection: .sessionPaused(sessionPauseReason))
         }
         if let safeRegion = action.requiredSafeRegion, !safeRegion.contains(action.point) {
             return ActionSafetyDecision(isAllowed: false, rejection: .outsideRequiredSafeRegion)

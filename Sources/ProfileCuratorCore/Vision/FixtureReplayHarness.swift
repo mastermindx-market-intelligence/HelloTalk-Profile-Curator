@@ -11,6 +11,7 @@ public struct FixtureManifest: Codable, Sendable {
     public let expectedGenderHint: GenderBadgeHint?
     public let expectedLocationCity: String?
     public let expectedNearbyCount: Int?
+    public let expectedScreenKind: DetectedScreenKind?
     public let minimumFaces: Int?
     public let notes: String?
 
@@ -23,6 +24,7 @@ public struct FixtureManifest: Codable, Sendable {
         expectedGenderHint: GenderBadgeHint? = nil,
         expectedLocationCity: String? = nil,
         expectedNearbyCount: Int? = nil,
+        expectedScreenKind: DetectedScreenKind? = nil,
         minimumFaces: Int? = nil,
         notes: String? = nil
     ) {
@@ -34,6 +36,7 @@ public struct FixtureManifest: Codable, Sendable {
         self.expectedGenderHint = expectedGenderHint
         self.expectedLocationCity = expectedLocationCity
         self.expectedNearbyCount = expectedNearbyCount
+        self.expectedScreenKind = expectedScreenKind
         self.minimumFaces = minimumFaces
         self.notes = notes
     }
@@ -47,6 +50,7 @@ public struct FixtureManifest: Codable, Sendable {
         case expectedGenderHint
         case expectedLocationCity
         case expectedNearbyCount
+        case expectedScreenKind
         case minimumFaces
         case notes
     }
@@ -61,6 +65,7 @@ public struct FixtureManifest: Codable, Sendable {
         expectedGenderHint = try container.decodeIfPresent(GenderBadgeHint.self, forKey: .expectedGenderHint)
         expectedLocationCity = try container.decodeIfPresent(String.self, forKey: .expectedLocationCity)
         expectedNearbyCount = try container.decodeIfPresent(Int.self, forKey: .expectedNearbyCount)
+        expectedScreenKind = try container.decodeIfPresent(DetectedScreenKind.self, forKey: .expectedScreenKind)
         minimumFaces = try container.decodeIfPresent(Int.self, forKey: .minimumFaces)
         notes = try container.decodeIfPresent(String.self, forKey: .notes)
     }
@@ -77,6 +82,7 @@ public struct FixtureReplayResult: Sendable {
     public let ageCandidates: [RecommendationAgeCandidate]
     public let allRecommendationAges: [RecommendationAgeCandidate]
     public let temporalLocation: TemporalLocationResolution
+    public let screenClassification: ScreenClassification
     public let validationFailures: [String]
 
     public init(
@@ -90,6 +96,7 @@ public struct FixtureReplayResult: Sendable {
         ageCandidates: [RecommendationAgeCandidate],
         allRecommendationAges: [RecommendationAgeCandidate],
         temporalLocation: TemporalLocationResolution,
+        screenClassification: ScreenClassification,
         validationFailures: [String]
     ) {
         self.manifestURL = manifestURL
@@ -102,6 +109,7 @@ public struct FixtureReplayResult: Sendable {
         self.ageCandidates = ageCandidates
         self.allRecommendationAges = allRecommendationAges
         self.temporalLocation = temporalLocation
+        self.screenClassification = screenClassification
         self.validationFailures = validationFailures
     }
 }
@@ -150,6 +158,7 @@ public struct FixtureReplayHarness: Sendable {
         let ageCandidates = ageParser.candidates(in: analysis.text)
         let allRecommendationAges = ageParser.allAges(in: analysis.text)
         let temporalLocation = rotatingLocationBadgeParser.resolve(frames: [analysis.text])
+        let screenClassification = NavigationStateDetector().classify(analysis)
         var failures: [String] = []
 
         for anchor in manifest.expectedAnchors where !anchorMatcher.contains(anchor: anchor, in: combinedText) {
@@ -205,6 +214,13 @@ public struct FixtureReplayHarness: Sendable {
             )
         }
 
+        if let expectedScreenKind = manifest.expectedScreenKind,
+           screenClassification.kind != expectedScreenKind {
+            failures.append(
+                "Expected screen kind \(expectedScreenKind.rawValue), got \(screenClassification.kind.rawValue)"
+            )
+        }
+
         return FixtureReplayResult(
             manifestURL: manifestURL,
             manifest: manifest,
@@ -216,6 +232,7 @@ public struct FixtureReplayHarness: Sendable {
             ageCandidates: ageCandidates,
             allRecommendationAges: allRecommendationAges,
             temporalLocation: temporalLocation,
+            screenClassification: screenClassification,
             validationFailures: failures
         )
     }

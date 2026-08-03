@@ -43,4 +43,36 @@ public struct NormalizedRect: Codable, Hashable, Sendable {
     public func contains(_ point: NormalizedPoint) -> Bool {
         point.x >= minX && point.x <= maxX && point.y >= minY && point.y <= maxY
     }
+
+    public func intersectsSegment(from start: NormalizedPoint, to end: NormalizedPoint) -> Bool {
+        if contains(start) || contains(end) { return true }
+
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        var lower = 0.0
+        var upper = 1.0
+
+        let boundaries = [
+            (-dx, start.x - minX),
+            (dx, maxX - start.x),
+            (-dy, start.y - minY),
+            (dy, maxY - start.y)
+        ]
+
+        for (p, q) in boundaries {
+            if abs(p) < .ulpOfOne {
+                if q < 0 { return false }
+                continue
+            }
+            let ratio = q / p
+            if p < 0 {
+                lower = max(lower, ratio)
+            } else {
+                upper = min(upper, ratio)
+            }
+            if lower > upper { return false }
+        }
+
+        return true
+    }
 }
