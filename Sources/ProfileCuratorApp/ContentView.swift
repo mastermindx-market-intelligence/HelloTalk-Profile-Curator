@@ -360,7 +360,7 @@ struct ContentView: View {
                     model.checkpointVerifiedProfile()
                 }
                 .disabled(!model.canCheckpointProfile)
-                Button("Save recognized PFP/Moment photo") {
+                Button("Save visible PFP/Moment frame") {
                     model.checkpointViewerPhoto()
                 }
                 .disabled(model.screenClassification?.kind != .pfpViewer && model.screenClassification?.kind != .momentViewer)

@@ -39,12 +39,13 @@ public struct NavigationStateDetector: Sendable {
     public func classify(_ analysis: FixtureAnalysis) -> ScreenClassification {
         let text = analysis.text.map(\.text).joined(separator: " · ")
 
-        if containsGalleryCounter(in: text)
-            && (contains("Like", in: text) || contains("Comment", in: text) || contains("Moments", in: text)) {
-            return classification(.momentViewer, .inspectMomentViewer, 0.88, ["Media counter", "Moment controls"])
+        if (containsGalleryCounter(in: text) || contains("LIVE", in: text))
+            && (contains("Like", in: text) || contains("Comment", in: text) || contains("Moments", in: text) || contains("AI", in: text)) {
+            return classification(.momentViewer, .inspectMomentViewer, 0.9, ["Moment media chrome"])
         }
         if contains("Moments", in: text)
-            && (contains("Posts", in: text) || contains("Album", in: text) || contains("No moments", in: text)) {
+            && (contains("Posts", in: text) || contains("Album", in: text) || contains("No moments", in: text)
+                || (contains("Like", in: text) && contains("Comment", in: text))) {
             return classification(.momentsFeed, .collectMoments, 0.84, ["Moments feed anchors"])
         }
 

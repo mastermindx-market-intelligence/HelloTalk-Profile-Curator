@@ -26,14 +26,15 @@ public struct ViewerPhotoRegionDetector: Sendable {
                 .map(\.bounds.minY)
                 .min() ?? 0.82
             let bottom = min(0.84, max(0.45, actionTop - 0.015))
+            let top = 0.19
             return PhotoExtractionRegion(
-                bounds: NormalizedRect(x: 0.015, y: 0.055, width: 0.97, height: bottom - 0.055),
+                bounds: NormalizedRect(x: 0.015, y: top, width: 0.97, height: bottom - top),
                 confidence: actionTop < 0.82 ? 0.92 : 0.7
             )
         case .momentViewer:
             return PhotoExtractionRegion(
-                bounds: NormalizedRect(x: 0.015, y: 0.07, width: 0.97, height: 0.76),
-                confidence: 0.65
+                bounds: NormalizedRect(x: 0.015, y: 0.22, width: 0.97, height: 0.575),
+                confidence: 0.82
             )
         default:
             return nil

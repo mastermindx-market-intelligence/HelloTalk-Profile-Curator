@@ -526,7 +526,7 @@ final class InspectorViewModel: ObservableObject {
                 return
             }
             try saveCollectionCheckpoint(profileID: profile.id)
-            collectionStatus = "Saved \(kind.rawValue) \(scannedPhotos.count + 1)/20 · retained \(shouldRetain ? retainedPhotos.count + 1 : retainedPhotos.count)/10"
+            collectionStatus = "Saved visible \(kind.rawValue) frame as PNG \(scannedPhotos.count + 1)/20 · retained \(shouldRetain ? retainedPhotos.count + 1 : retainedPhotos.count)/10"
         } catch {
             collectionStatus = "Photo checkpoint failed · \(error.localizedDescription)"
         }
