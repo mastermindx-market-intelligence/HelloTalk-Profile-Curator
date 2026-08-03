@@ -3,6 +3,10 @@ import XCTest
 @testable import ProfileCuratorCore
 
 final class VLMIntegrationTests: XCTestCase {
+    func testFreshConfigurationUsesCurrentTwelveGigabyteVisionDefault() {
+        XCTAssertEqual(VLMConfiguration().model, "qwen3.5:9b")
+    }
+
     func testConfigurationRejectsUnsafeOrMalformedEndpoint() throws {
         XCTAssertThrowsError(try VLMConfiguration().validatedBaseURL())
         XCTAssertThrowsError(try VLMConfiguration(baseURL: URL(string: "file:///tmp/ollama")).validatedBaseURL())

@@ -61,7 +61,7 @@ Remaining supervised gate: validate calibrated PFP open/crop/close actions befor
 - [x] Offline queue, timeout, bounded retry
 - [x] Evidence/confidence persistence schema and dashboard score display
 
-Deferred by user: supply the Windows MagicDNS/Tailscale URL and choose the upgraded Qwen model.
+Live endpoint setup pending: the fresh-install default is now `qwen3.5:9b`; inspect the Windows/WSL Ollama service and expose it only to the Mac over Tailscale.
 
 ## Phase 6 — secondary group and ranking
 

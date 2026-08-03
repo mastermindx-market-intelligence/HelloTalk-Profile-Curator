@@ -258,7 +258,7 @@ enum ExportFormat: String { case csv, json }
 @MainActor
 final class VLMSettingsViewModel: ObservableObject {
     @Published var endpoint = ""
-    @Published var model = "qwen3-vl:4b"
+    @Published var model = "qwen3.5:9b"
     @Published var status = "Not configured — collection remains fully offline"
     @Published var isTesting = false
 

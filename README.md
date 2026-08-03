@@ -47,6 +47,8 @@ The current local build includes an Inspector, persistence layer, review dashboa
 
 The production UI still defaults to dry-run and does not expose an unattended live-input switch. The core input executor exists behind explicit safety gates and a postcondition lock, but activation remains a supervised release gate. The experimental orange gallery path remains disabled after supervised mirroring validation showed that horizontal drag/scroll does not move the carousel.
 
+The fresh-install VLM default is `qwen3.5:9b`: a 6.6 GB multimodal Ollama build selected for the Windows RTX 5070 Ti 12 GB. Qwen3.6 is newer, but its smallest Ollama package is 17 GB and is not an appropriate single-GPU default for that card.
+
 Dry-run audit logs are written locally under `~/Library/Application Support/ProfileCurator/navigation-logs/`. They contain state and safety metadata, not screenshot pixels.
 
 ## Run

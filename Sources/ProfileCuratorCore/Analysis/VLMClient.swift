@@ -8,7 +8,7 @@ public struct VLMConfiguration: Codable, Hashable, Sendable {
 
     public init(
         baseURL: URL? = nil,
-        model: String = "qwen3-vl:4b",
+        model: String = "qwen3.5:9b",
         requestTimeoutSeconds: Double = 45,
         maximumRetries: Int = 2
     ) {
