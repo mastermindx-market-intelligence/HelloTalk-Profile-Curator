@@ -48,6 +48,11 @@ struct ContentView: View {
             }
             .disabled(model.selectedWindowID == nil)
 
+            Button("Location Burst", systemImage: "rectangle.stack") {
+                model.captureLocationBurst()
+            }
+            .disabled(model.selectedWindowID == nil)
+
             Spacer()
 
             Label("Dry run only", systemImage: "shield.checkered")
@@ -147,6 +152,11 @@ struct ContentView: View {
                     model.captureSelectedWindow()
                 }
                 .disabled(model.selectedWindowID == nil)
+
+                Button("Capture rotating location badge (5 frames)") {
+                    model.captureLocationBurst()
+                }
+                .disabled(model.selectedWindowID == nil)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -190,7 +200,39 @@ struct ContentView: View {
                     LabeledContent("All exact MBTI", value: model.mbtiMatches.map(\.type.rawValue).joined(separator: ", "))
                 }
 
-                if let location = model.detectedLocation {
+                if let age = model.detectedProfileAge {
+                    LabeledContent(
+                        "Profile age",
+                        value: "\(age.age)\(age.usedBadgeArtifactCorrection ? " · badge correction" : "")"
+                    )
+                }
+
+                if let gender = model.detectedGenderBadge {
+                    LabeledContent(
+                        "Gender badge",
+                        value: "\(gender.hint.rawValue) · \(Int(gender.confidence * 100))%"
+                    )
+                }
+
+                if !model.visibleRecommendationAges.isEmpty {
+                    LabeledContent(
+                        "Visible card ages",
+                        value: model.visibleRecommendationAges.map { String($0.age) }.joined(separator: ", ")
+                    )
+                }
+
+                if let resolution = model.temporalLocation,
+                   let location = resolution.location {
+                    LabeledContent("Temporal location", value: location.city ?? location.province ?? "Unknown")
+                    LabeledContent("Location tier", value: "\(location.tier) · score \(location.score)")
+                    LabeledContent("Frames sampled", value: "\(resolution.framesExamined)")
+                    if !resolution.nearbyCountsIgnored.isEmpty {
+                        LabeledContent(
+                            "Nearby metadata",
+                            value: resolution.nearbyCountsIgnored.map(String.init).joined(separator: ", ")
+                        )
+                    }
+                } else if let location = model.detectedLocation {
                     LabeledContent("Location", value: location.city ?? location.province ?? "Unknown")
                     LabeledContent("Location tier", value: "\(location.tier) · score \(location.score)")
                 }
@@ -209,6 +251,12 @@ struct ContentView: View {
         GroupBox("Calibration editor") {
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("Draw calibration regions", isOn: $model.calibrationMode)
+                Picker("Screen", selection: $model.selectedCalibrationContext) {
+                    ForEach(CalibrationContext.allCases) { context in
+                        Text(context.displayName).tag(context)
+                    }
+                }
+                .pickerStyle(.menu)
                 Picker("Region", selection: $model.selectedCalibrationKind) {
                     ForEach(CalibrationMarkKind.allCases) { kind in
                         Text(kind.displayName).tag(kind)
@@ -221,6 +269,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
 
                 HStack {
+                    Button("Observed baseline") { model.loadObservedBaseline() }
                     Button("Undo") { model.undoCalibrationMark() }
                         .disabled(model.calibrationMarks.isEmpty)
                     Button("Clear") { model.clearCalibrationMarks() }
@@ -235,7 +284,7 @@ struct ContentView: View {
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
 
-                ForEach(model.calibrationMarks) { mark in
+                ForEach(model.calibrationMarks.filter { $0.context == model.selectedCalibrationContext }) { mark in
                     HStack {
                         Circle()
                             .fill(mark.kind.isExclusion ? .red : .purple)

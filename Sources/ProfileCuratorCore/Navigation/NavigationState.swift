@@ -3,6 +3,7 @@ import Foundation
 public enum NavigationState: String, CaseIterable, Codable, Sendable {
     case acquireMirroringWindow
     case identifyCurrentScreen
+    case acquireSeedProfile
     case profileTop
     case scanForPersonalInfo
     case evaluateMBTI
@@ -11,6 +12,7 @@ public enum NavigationState: String, CaseIterable, Codable, Sendable {
     case seekSuggestions
     case scanRecommendationCards
     case swipeCarousel
+    case returnToSeedFeed
     case openEligibleProfile
     case verifyProfileChanged
     case pausedUnknownState

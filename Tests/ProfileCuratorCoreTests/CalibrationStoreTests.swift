@@ -13,6 +13,7 @@ final class CalibrationStoreTests: XCTestCase {
 
         let store = CalibrationStore(fileURL: directory.appendingPathComponent("calibration.json"))
         let expectedMark = CalibrationMark(
+            context: .momentViewer,
             kind: .excludeSayHi,
             bounds: NormalizedRect(x: 0.1, y: 0.75, width: 0.3, height: 0.08),
             confirmed: true
@@ -30,5 +31,6 @@ final class CalibrationStoreTests: XCTestCase {
         XCTAssertEqual(restored.referencePixelWidth, 1_290)
         XCTAssertEqual(restored.referencePixelHeight, 2_796)
         XCTAssertEqual(restored.marks, [expectedMark])
+        XCTAssertEqual(restored.marks.first?.context, .momentViewer)
     }
 }

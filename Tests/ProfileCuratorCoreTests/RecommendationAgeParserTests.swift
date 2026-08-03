@@ -18,4 +18,22 @@ final class RecommendationAgeParserTests: XCTestCase {
         let observations = [OCRObservation(text: "21", confidence: 0.4, bounds: bounds)]
         XCTAssertTrue(RecommendationAgeParser().candidates(in: observations).isEmpty)
     }
+
+    func testDoesNotExtractAgeFromUsernameOrUnrelatedNumber() {
+        let observations = [
+            OCRObservation(text: "@a_eira19", confidence: 0.99, bounds: bounds),
+            OCRObservation(text: "571d Joined", confidence: 0.99, bounds: bounds)
+        ]
+
+        XCTAssertTrue(RecommendationAgeParser().candidates(in: observations).isEmpty)
+    }
+
+    func testObservedFemaleBadgeArtifactCanBeRejectedAsOutOfRange() {
+        let observations = [OCRObservation(text: "922", confidence: 0.95, bounds: bounds)]
+        let parser = RecommendationAgeParser()
+
+        XCTAssertEqual(parser.allAges(in: observations).map(\.age), [22])
+        XCTAssertTrue(parser.allAges(in: observations).first?.usedBadgeArtifactCorrection == true)
+        XCTAssertTrue(parser.candidates(in: observations).isEmpty)
+    }
 }

@@ -53,7 +53,8 @@ public struct LocationNormalizer: Sendable {
         Entry(aliases: ["wuhan", "武汉", "武漢"], city: "Wuhan", province: "Hubei", tier: 4, score: 55),
         Entry(aliases: ["xi'an", "xian", "西安"], city: "Xi'an", province: "Shaanxi", tier: 4, score: 55),
         Entry(aliases: ["nanjing", "南京"], city: "Nanjing", province: "Jiangsu", tier: 4, score: 55),
-        Entry(aliases: ["xiamen", "厦门", "廈門"], city: "Xiamen", province: "Fujian", tier: 4, score: 55)
+        Entry(aliases: ["xiamen", "厦门", "廈門"], city: "Xiamen", province: "Fujian", tier: 4, score: 55),
+        Entry(aliases: ["shenyang", "沈阳", "瀋陽"], city: "Shenyang", province: "Liaoning", tier: 5, score: 30)
     ]
 
     public init() {}

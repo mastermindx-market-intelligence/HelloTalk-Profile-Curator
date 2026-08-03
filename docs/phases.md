@@ -10,8 +10,8 @@
 - [x] Read-only iPhone Mirroring window discovery
 - [x] Permission status surface
 - [x] Normalized action/exclusion preview model
-- [ ] Add supervised private fixture screenshots
-- [ ] Tune parsers against short/long real profiles
+- [x] Add supervised private fixture screenshots (ignored locally; never committed)
+- [x] Tune parsers against short/long real profiles
 - [ ] Associate recommendation ages with real card rectangles
 
 Exit evidence: unit tests plus successful replay of the supervised fixture set.
@@ -19,12 +19,14 @@ Exit evidence: unit tests plus successful replay of the supervised fixture set.
 ## Phase 2 — safe live navigation dry run
 
 - [x] Capture only the selected iPhone Mirroring window with ScreenCaptureKit (single-frame, read-only)
+- [x] Add a read-only five-frame burst for the rotating location/nearby badge
 - [x] Calibration editor for normalized safe and excluded regions (awaiting supervised real-UI calibration)
 - [ ] Frame-change and resize detection
 - [ ] Scroll and carousel gesture previews
 - [ ] State/postcondition event log
 - [ ] Emergency stop and session caps
-- [ ] Supervised UI observations in `docs/ui-observations.md`
+- [x] Supervised UI observations in `docs/ui-observations.md`
+- [x] Establish gallery-first discovery policy with Custom Search/Connect as seed fallbacks
 
 Exit evidence: profile-to-Personal-Info-to-Suggestions traversal in dry-run/step mode with no social control activated.
 

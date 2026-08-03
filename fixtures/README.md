@@ -23,8 +23,14 @@ For each fixture, add a sibling JSON manifest when practical:
   "expectedAnchors": ["Personal Info", "Suggested for You"],
   "expectedMBTI": "INFJ",
   "expectedAge": 21,
+  "expectedLocationCity": "Shenyang",
+  "expectedNearbyCount": 576,
   "notes": "Long hobbies section; requires several vertical scrolls"
 }
 ```
 
+For an animated label, store each phase as a separate ignored image/manifest. Location-city and nearby-count expectations are deliberately separate so a transient count can never satisfy location validation.
+
 Synthetic or fully anonymized regression fixtures may later be committed under `fixtures/synthetic/`.
+
+Private manifests are replayed automatically by `PrivateFixtureReplayTests` when present. The test skips cleanly on machines that do not have the ignored private fixture library.

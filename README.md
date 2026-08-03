@@ -18,11 +18,14 @@ The first slice is an offline Inspector. It can:
 - run Apple Vision OCR and face capture-quality detection;
 - draw normalized OCR and face boxes;
 - extract exact target MBTI values;
+- recover observed profile/card age badges without treating username suffixes as ages;
+- classify pink versus blue gender-badge evidence locally and fail closed when ambiguous;
 - normalize the configured priority locations;
 - locate the iPhone Mirroring window read-only;
 - capture one macOS-rendered frame from the selected mirroring window for Inspector replay;
+- capture a five-frame burst to resolve the rotating location/nearby badge without conflating its two states;
 - show Screen Recording and Accessibility permission status;
-- preview intended action and never-click regions without executing input.
+- preview intended action and never-click regions without executing input;
 - draw and save normalized calibration regions over a fixture or captured frame.
 
 No live input events are generated in this phase.

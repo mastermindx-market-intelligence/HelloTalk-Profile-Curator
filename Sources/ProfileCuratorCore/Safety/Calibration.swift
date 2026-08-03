@@ -45,23 +45,129 @@ public enum CalibrationMarkKind: String, CaseIterable, Codable, Sendable, Identi
     }
 }
 
+public enum CalibrationContext: String, CaseIterable, Codable, Sendable, Identifiable {
+    case connectFeed
+    case profile
+    case pfpViewer
+    case momentsFeed
+    case momentViewer
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .connectFeed: "Connect feed"
+        case .profile: "Profile"
+        case .pfpViewer: "PFP viewer"
+        case .momentsFeed: "Moments feed"
+        case .momentViewer: "Moment viewer"
+        }
+    }
+}
+
 public struct CalibrationMark: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
+    public let context: CalibrationContext
     public let kind: CalibrationMarkKind
     public let bounds: NormalizedRect
     public let confirmed: Bool
 
     public init(
         id: UUID = UUID(),
+        context: CalibrationContext = .profile,
         kind: CalibrationMarkKind,
         bounds: NormalizedRect,
         confirmed: Bool = false
     ) {
         self.id = id
+        self.context = context
         self.kind = kind
         self.bounds = bounds
         self.confirmed = confirmed
     }
+}
+
+public enum ObservedHelloTalkCalibration {
+    /// Baseline measured from the supervised 2026-08-03 session. Values are
+    /// normalized to the complete 420×932 iPhone Mirroring window capture.
+    /// Runtime must still validate visual anchors before using any safe region.
+    public static let marks: [CalibrationMark] = [
+        CalibrationMark(
+            context: .connectFeed,
+            kind: .safeRecommendationCard,
+            bounds: NormalizedRect(x: 0.057, y: 0.258, width: 0.16, height: 0.077)
+        ),
+        CalibrationMark(
+            context: .profile,
+            kind: .safeAvatar,
+            bounds: NormalizedRect(x: 0.057, y: 0.258, width: 0.171, height: 0.077)
+        ),
+        CalibrationMark(
+            context: .profile,
+            kind: .safeAboutMe,
+            bounds: NormalizedRect(x: 0.057, y: 0.547, width: 0.293, height: 0.038)
+        ),
+        CalibrationMark(
+            context: .profile,
+            kind: .safeMoments,
+            bounds: NormalizedRect(x: 0.35, y: 0.547, width: 0.298, height: 0.038)
+        ),
+        CalibrationMark(
+            context: .profile,
+            kind: .safeBackClose,
+            bounds: NormalizedRect(x: 0.057, y: 0.103, width: 0.062, height: 0.04)
+        ),
+        CalibrationMark(
+            context: .profile,
+            kind: .profileHeaderAnchor,
+            bounds: NormalizedRect(x: 0.057, y: 0.258, width: 0.881, height: 0.172)
+        ),
+        CalibrationMark(
+            context: .profile,
+            kind: .excludeFollow,
+            bounds: NormalizedRect(x: 0.057, y: 0.89, width: 0.366, height: 0.057)
+        ),
+        CalibrationMark(
+            context: .profile,
+            kind: .excludeSayHi,
+            bounds: NormalizedRect(x: 0.44, y: 0.89, width: 0.362, height: 0.057)
+        ),
+        CalibrationMark(
+            context: .profile,
+            kind: .excludeGift,
+            bounds: NormalizedRect(x: 0.823, y: 0.89, width: 0.114, height: 0.057)
+        ),
+        CalibrationMark(
+            context: .pfpViewer,
+            kind: .safeBackClose,
+            bounds: NormalizedRect(x: 0.057, y: 0.103, width: 0.062, height: 0.04)
+        ),
+        CalibrationMark(
+            context: .pfpViewer,
+            kind: .excludeLike,
+            bounds: NormalizedRect(x: 0.714, y: 0.108, width: 0.088, height: 0.045)
+        ),
+        CalibrationMark(
+            context: .pfpViewer,
+            kind: .excludeGift,
+            bounds: NormalizedRect(x: 0.845, y: 0.108, width: 0.093, height: 0.045)
+        ),
+        CalibrationMark(
+            context: .pfpViewer,
+            kind: .excludeGift,
+            bounds: NormalizedRect(x: 0.057, y: 0.662, width: 0.881, height: 0.125)
+        ),
+        CalibrationMark(
+            context: .momentViewer,
+            kind: .safeBackClose,
+            bounds: NormalizedRect(x: 0.057, y: 0.103, width: 0.062, height: 0.04)
+        ),
+        CalibrationMark(
+            context: .momentViewer,
+            kind: .excludeLike,
+            bounds: NormalizedRect(x: 0.057, y: 0.89, width: 0.881, height: 0.072)
+        )
+    ]
 }
 
 public struct CalibrationProfile: Codable, Sendable {

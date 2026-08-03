@@ -17,9 +17,11 @@ final class InspectorViewModel: ObservableObject {
     @Published var showFaceBoxes = true
     @Published var showSafetyPreview = true
     @Published var calibrationMode = false
+    @Published var selectedCalibrationContext: CalibrationContext = .profile
     @Published var selectedCalibrationKind: CalibrationMarkKind = .safeAvatar
     @Published var calibrationMarks: [CalibrationMark] = []
     @Published var calibrationStatus = "Not saved"
+    @Published var temporalLocation: TemporalLocationResolution?
 
     let previewAction = DefaultInspectorCalibration.previewAction
     let previewExclusions = DefaultInspectorCalibration.previewExclusions
@@ -27,6 +29,11 @@ final class InspectorViewModel: ObservableObject {
     private let analyzer = VisionFixtureAnalyzer()
     private let mbtiParser = MBTIParser()
     private let locationNormalizer = LocationNormalizer()
+    private let profileHeaderParser = ProfileHeaderParser()
+    private let recommendationAgeParser = RecommendationAgeParser()
+    private let genderBadgeClassifier = GenderBadgeClassifier()
+    private let rotatingLocationBadgeParser = RotatingLocationBadgeParser()
+    private var currentCGImage: CGImage?
 
     var mbtiMatches: [MBTIMatch] {
         guard let analysis else { return [] }
@@ -41,6 +48,21 @@ final class InspectorViewModel: ObservableObject {
     var detectedLocation: NormalizedLocation? {
         guard let analysis else { return nil }
         return locationNormalizer.normalize(analysis.text.map(\.text).joined(separator: " · "))
+    }
+
+    var detectedProfileAge: ProfileAgeMatch? {
+        guard let analysis else { return nil }
+        return profileHeaderParser.bestAge(in: analysis.text)
+    }
+
+    var detectedGenderBadge: GenderBadgeEvidence? {
+        guard let currentCGImage, let detectedProfileAge else { return nil }
+        return genderBadgeClassifier.classify(image: currentCGImage, ageMatch: detectedProfileAge)
+    }
+
+    var visibleRecommendationAges: [RecommendationAgeCandidate] {
+        guard let analysis else { return [] }
+        return recommendationAgeParser.allAges(in: analysis.text)
     }
 
     var previewDecision: ActionSafetyDecision {
@@ -82,7 +104,9 @@ final class InspectorViewModel: ObservableObject {
             let result = try analyzer.analyze(cgImage)
             fixtureImage = image
             fixtureURL = url
+            currentCGImage = cgImage
             analysis = result
+            temporalLocation = rotatingLocationBadgeParser.resolve(frames: [result.text])
             navigationState = .identifyCurrentScreen
         } catch {
             errorMessage = error.localizedDescription
@@ -147,7 +171,9 @@ final class InspectorViewModel: ObservableObject {
                 let result = try analyzer.analyze(frame.image)
                 fixtureImage = image
                 fixtureURL = nil
+                currentCGImage = frame.image
                 analysis = result
+                temporalLocation = rotatingLocationBadgeParser.resolve(frames: [result.text])
                 windowSearchStatus = "Captured window \(selectedWindowID) at \(frame.capturedAt.formatted(date: .omitted, time: .standard))"
                 navigationState = .identifyCurrentScreen
                 refreshPermissions()
@@ -159,13 +185,65 @@ final class InspectorViewModel: ObservableObject {
         }
     }
 
+    func captureLocationBurst() {
+        guard let selectedWindowID else {
+            errorMessage = "Locate and select an iPhone Mirroring window first."
+            return
+        }
+
+        let frameCount = 5
+        windowSearchStatus = "Capturing \(frameCount)-frame location burst…"
+        errorMessage = nil
+
+        Task {
+            do {
+                let frames = try await WindowCaptureService().captureBurst(
+                    windowID: selectedWindowID,
+                    frameCount: frameCount,
+                    intervalMilliseconds: 700
+                )
+                let analyses = try frames.map { try analyzer.analyze($0.image) }
+                guard let lastFrame = frames.last, let lastAnalysis = analyses.last else { return }
+
+                fixtureImage = NSImage(
+                    cgImage: lastFrame.image,
+                    size: NSSize(width: lastFrame.image.width, height: lastFrame.image.height)
+                )
+                fixtureURL = nil
+                currentCGImage = lastFrame.image
+                analysis = lastAnalysis
+                temporalLocation = rotatingLocationBadgeParser.resolve(frames: analyses.map(\.text))
+                navigationState = .identifyCurrentScreen
+
+                if let city = temporalLocation?.location?.city {
+                    windowSearchStatus = "Resolved \(city) across \(frames.count) frames"
+                } else {
+                    windowSearchStatus = "No stable city label found across \(frames.count) frames"
+                }
+                refreshPermissions()
+            } catch {
+                windowSearchStatus = "Location burst failed"
+                errorMessage = error.localizedDescription
+                refreshPermissions()
+            }
+        }
+    }
+
     func addCalibrationMark(bounds: NormalizedRect) {
         guard bounds.isValidNormalizedRect, bounds.width >= 0.005, bounds.height >= 0.005 else {
             errorMessage = "Calibration regions must be drawn inside the captured image."
             return
         }
-        calibrationMarks.removeAll { $0.kind == selectedCalibrationKind }
-        calibrationMarks.append(CalibrationMark(kind: selectedCalibrationKind, bounds: bounds))
+        calibrationMarks.removeAll {
+            $0.context == selectedCalibrationContext && $0.kind == selectedCalibrationKind
+        }
+        calibrationMarks.append(
+            CalibrationMark(
+                context: selectedCalibrationContext,
+                kind: selectedCalibrationKind,
+                bounds: bounds
+            )
+        )
         calibrationStatus = "Unsaved changes"
     }
 
@@ -178,6 +256,11 @@ final class InspectorViewModel: ObservableObject {
     func clearCalibrationMarks() {
         calibrationMarks = []
         calibrationStatus = "Unsaved changes"
+    }
+
+    func loadObservedBaseline() {
+        calibrationMarks = ObservedHelloTalkCalibration.marks
+        calibrationStatus = "Loaded supervised 2026-08-03 baseline; confirm before live use"
     }
 
     func saveCalibration() {

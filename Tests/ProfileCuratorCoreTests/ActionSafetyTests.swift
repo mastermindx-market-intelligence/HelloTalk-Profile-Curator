@@ -81,4 +81,14 @@ final class ActionSafetyTests: XCTestCase {
         XCTAssertTrue(decision.isAllowed)
         XCTAssertNil(decision.rejection)
     }
+
+    func testObservedDiscoveryPolicyUsesGalleryAsPrimaryInventory() {
+        let policy = DiscoveryPolicy.observedDefault
+
+        XCTAssertEqual(policy.primarySource, .similarProfilesGallery)
+        XCTAssertEqual(policy.fallbackSources, [.customSearchSeed, .connectFeedSeed])
+        XCTAssertTrue(policy.customSearchActiveUsersOnly)
+        XCTAssertTrue(policy.reverifyAgeAndGenderOnEveryProfile)
+        XCTAssertTrue(policy.sameGenderRecommendationIsHintOnly)
+    }
 }

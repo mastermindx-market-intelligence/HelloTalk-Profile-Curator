@@ -11,6 +11,22 @@ The build has two planes:
 
 The action plane remains disabled until the observation plane is validated against supervised fixtures and the real mirrored UI.
 
+## Discovery strategy
+
+The observed 2026-08-03 UI makes the in-profile **Suggested for You** horizontal gallery the primary inventory engine. It exposes a broader, recently-active pool and tends to preserve gender similarity from a female seed profile. That similarity is only a routing hint: every opened profile still requires an explicit female badge and age 18–21 verification.
+
+Custom Search is a seed/fallback path, not the main traversal loop. Its results are restricted to currently active users, its rows omit exact age/gender, and selecting the Female filter opened a paid subscription offer during supervised testing. The safe loop is therefore:
+
+```text
+Acquire female age-18–21 seed through age-filtered Custom Search or Connect
+  -> verify opened profile age and female badge
+  -> scan About Me for target MBTI
+  -> seek Suggested for You at profile bottom
+  -> traverse horizontal gallery as primary inventory
+  -> re-verify every opened profile
+  -> return to a seed feed only when the gallery is absent or exhausted
+```
+
 ## Module map
 
 ```text
@@ -26,17 +42,20 @@ ProfileCuratorCore
 │   └── profile and score records
 ├── Capture
 │   ├── MirroringWindowLocator (read-only in phase 1)
-│   └── WindowCaptureService (phase 2)
+│   └── WindowCaptureService (single frame and read-only temporal burst)
 ├── Vision
 │   ├── VisionFixtureAnalyzer
 │   ├── MBTIParser
-│   └── LocationNormalizer
+│   ├── ProfileHeaderParser and GenderBadgeClassifier
+│   ├── RecommendationAgeParser
+│   └── RotatingLocationBadgeParser and LocationNormalizer
 ├── Safety
 │   ├── exclusion zones
 │   ├── action validation
 │   └── emergency-stop policy
 ├── Navigation
 │   ├── explicit state model
+│   ├── gallery-first discovery policy
 │   └── postconditions/recovery (phase 2)
 └── Persistence
     └── GRDB-backed local repository
@@ -60,6 +79,8 @@ An input action may eventually execute only if all gates pass:
 8. the previous action reached its visible postcondition.
 
 The runtime records the observation, plan, validation result, action, and postcondition as separate events.
+
+Rotating labels are temporal observations. The map pill alternates between a city/country/local-time label and a nearby-user count every 1–2 seconds, so location capture uses five frames at 700 ms spacing. Only the city phase enters location normalization; nearby counts remain separate metadata.
 
 ## Local data boundary
 
