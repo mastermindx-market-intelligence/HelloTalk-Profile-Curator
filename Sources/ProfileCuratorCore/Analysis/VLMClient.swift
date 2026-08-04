@@ -89,6 +89,15 @@ public struct FaceVerificationResult: Codable, Hashable, Sendable {
         case isFaceClearEnoughToScore = "is_face_clear_enough_to_score"
         case confidence
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isPhotographicHumanFace = try container.decode(Bool.self, forKey: .isPhotographicHumanFace)
+        isIllustrationOrAnime = try container.decode(Bool.self, forKey: .isIllustrationOrAnime)
+        isHeavilyFiltered = try container.decode(Bool.self, forKey: .isHeavilyFiltered)
+        isFaceClearEnoughToScore = try container.decode(Bool.self, forKey: .isFaceClearEnoughToScore)
+        confidence = normalizedConfidence(try container.decode(Double.self, forKey: .confidence))
+    }
 }
 
 public struct VisualAppealResult: Codable, Hashable, Sendable {
@@ -107,8 +116,8 @@ public struct VisualAppealResult: Codable, Hashable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         visualAppealScore = min(100, max(0, try container.decode(Double.self, forKey: .visualAppealScore)))
-        confidence = try container.decode(Double.self, forKey: .confidence)
-        photoQualityPenalty = max(0, try container.decode(Double.self, forKey: .photoQualityPenalty))
+        confidence = normalizedConfidence(try container.decode(Double.self, forKey: .confidence))
+        photoQualityPenalty = min(100, max(0, try container.decode(Double.self, forKey: .photoQualityPenalty)))
         if let values = try? container.decode([String].self, forKey: .notes) {
             notes = values
         } else {
@@ -127,6 +136,13 @@ public struct LifestyleEvidence: Codable, Hashable, Sendable {
         case category, strength, explanation
         case sourceImageID = "source_image_id"
     }
+
+    public init(category: String, strength: String, sourceImageID: String, explanation: String) {
+        self.category = category
+        self.strength = strength
+        self.sourceImageID = sourceImageID
+        self.explanation = explanation
+    }
 }
 
 public struct LifestyleSignalResult: Codable, Hashable, Sendable {
@@ -140,6 +156,26 @@ public struct LifestyleSignalResult: Codable, Hashable, Sendable {
         case confidence, evidence
         case actualWealth = "actual_wealth"
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        lifestyleAffluenceSignal = min(100, max(0, try container.decode(Double.self, forKey: .lifestyleAffluenceSignal)))
+        confidence = normalizedConfidence(try container.decode(Double.self, forKey: .confidence))
+        evidence = try container.decode([LifestyleEvidence].self, forKey: .evidence)
+        actualWealth = try container.decode(String.self, forKey: .actualWealth)
+    }
+
+    public init(lifestyleAffluenceSignal: Double, confidence: Double, evidence: [LifestyleEvidence]) {
+        self.lifestyleAffluenceSignal = min(100, max(0, lifestyleAffluenceSignal))
+        self.confidence = normalizedConfidence(confidence)
+        self.evidence = evidence
+        actualWealth = "unknown"
+    }
+}
+
+private func normalizedConfidence(_ value: Double) -> Double {
+    let ratio = value > 1 ? value / 100 : value
+    return min(1, max(0, ratio))
 }
 
 public struct AnalysisImageReference: Codable, Hashable, Sendable, Identifiable {
@@ -190,15 +226,34 @@ public extension AnalysisRunRecord {
         return result.evidence
     }
 
+    var faceVerificationResult: FaceVerificationResult? {
+        decodeResponse(FaceVerificationResult.self, expectedType: .faceVerification)
+    }
+
+    var visualAppealResult: VisualAppealResult? {
+        decodeResponse(VisualAppealResult.self, expectedType: .visualAppeal)
+    }
+
+    var lifestyleSignalResult: LifestyleSignalResult? {
+        decodeResponse(LifestyleSignalResult.self, expectedType: .lifestyle)
+    }
+
     func lifestyleEvidence(sourceImageID: String) -> [LifestyleEvidence] {
         lifestyleEvidence.filter { $0.sourceImageID == sourceImageID }
+    }
+
+    private func decodeResponse<T: Decodable>(_ type: T.Type, expectedType: AnalysisType) -> T? {
+        guard analysisType == expectedType.rawValue,
+              let responseJSON,
+              let data = responseJSON.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
     }
 }
 
 public enum VLMPromptLibrary {
     public static let faceVerificationVersion = "face-verification-v2"
     public static let visualAppealVersion = "visual-appeal-v2"
-    public static let lifestyleVersion = "lifestyle-evidence-v2"
+    public static let lifestyleVersion = "lifestyle-evidence-v3"
 
     public static let faceVerification = """
     Return JSON only. Determine whether the provided crop contains a photographic human face that is clear enough for presentation scoring. Distinguish illustration/anime and heavy filtering. Do not identify the person or infer protected traits. Use keys: is_photographic_human_face, is_illustration_or_anime, is_heavily_filtered, is_face_clear_enough_to_score, confidence, source_image_ids. confidence must be from 0.0 to 1.0.
@@ -209,7 +264,7 @@ public enum VLMPromptLibrary {
     """
 
     public static let lifestyle = """
-    Return JSON only. Score repeated, observable lifestyle presentation from 0 to 100 using visible evidence. Never claim actual wealth, family background, social class, or protected traits. One ambiguous logo or one hotel visit must not dominate. Use keys: lifestyle_affluence_signal, confidence, evidence (category, strength, source_image_id, explanation), actual_wealth. confidence must be from 0.0 to 1.0. Every evidence item must use one of the supplied source image IDs. actual_wealth must be unknown.
+    Return JSON only. Score repeated, observable lifestyle presentation from 0 to 100 using visible evidence. Never claim actual wealth, family background, social class, or protected traits. One ambiguous logo or one hotel visit must not dominate. Use keys: lifestyle_affluence_signal, confidence, evidence (category, strength, source_image_id, explanation), actual_wealth. confidence must be from 0.0 to 1.0. Category must be one of: travel, dining, fashion, fitness, social_activity, animal_interaction, outdoor_activity, digital_engagement, home_environment, education, other. Every evidence item must use one of the supplied source image IDs. Before returning JSON, cross-check each evidence description against that exact image ordinal so citations cannot shift to an adjacent image. actual_wealth must be unknown.
     """
 
     public static func prompt(_ base: String, imageReferences: [AnalysisImageReference]) -> String {

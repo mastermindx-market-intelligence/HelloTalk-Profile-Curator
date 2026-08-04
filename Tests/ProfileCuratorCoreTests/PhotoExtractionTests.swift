@@ -4,6 +4,35 @@ import XCTest
 @testable import ProfileCuratorCore
 
 final class PhotoExtractionTests: XCTestCase {
+    func testMomentCaptureRejectsAdvertisingFeedChrome() {
+        let observations = [
+            OCRObservation(
+                text: "Install",
+                confidence: 0.99,
+                bounds: NormalizedRect(x: 0.7, y: 0.2, width: 0.2, height: 0.05)
+            ),
+            OCRObservation(
+                text: "Ad-Free Experience",
+                confidence: 0.95,
+                bounds: NormalizedRect(x: 0.4, y: 0.5, width: 0.3, height: 0.04)
+            )
+        ]
+
+        XCTAssertFalse(MomentMediaCaptureValidator().isFullPhoto(observations: observations))
+    }
+
+    func testMomentCaptureAllowsOrdinaryPhotoTextOverlay() {
+        let observations = [
+            OCRObservation(
+                text: "Summer day",
+                confidence: 0.9,
+                bounds: NormalizedRect(x: 0.1, y: 0.8, width: 0.2, height: 0.04)
+            )
+        ]
+
+        XCTAssertTrue(MomentMediaCaptureValidator().isFullPhoto(observations: observations))
+    }
+
     func testPFPRegionStopsAboveActionRows() throws {
         let observations = [
             OCRObservation(

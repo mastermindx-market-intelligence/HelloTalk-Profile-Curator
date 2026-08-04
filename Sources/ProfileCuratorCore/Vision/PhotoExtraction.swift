@@ -42,6 +42,29 @@ public struct ViewerPhotoRegionDetector: Sendable {
     }
 }
 
+public struct MomentMediaCaptureValidator: Sendable {
+    public init() {}
+
+    public func rejectionReason(observations: [OCRObservation]) -> String? {
+        let visibleText = observations
+            .filter { $0.confidence >= 0.35 }
+            .map { $0.text.lowercased() }
+            .joined(separator: " ")
+        let advertisingMarkers = [
+            "install", "ad-free", "ad free", "sponsored", "advertisement",
+            "promoted", "download app", "looking for a game"
+        ]
+        if advertisingMarkers.contains(where: visibleText.contains) {
+            return "advertising or feed chrome detected"
+        }
+        return nil
+    }
+
+    public func isFullPhoto(observations: [OCRObservation]) -> Bool {
+        rejectionReason(observations: observations) == nil
+    }
+}
+
 public struct WindowPhotoCropper: Sendable {
     public init() {}
 

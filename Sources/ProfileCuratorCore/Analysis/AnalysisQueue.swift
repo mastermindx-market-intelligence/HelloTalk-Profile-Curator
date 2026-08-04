@@ -60,9 +60,12 @@ public actor AnalysisQueueProcessor {
             let imageReferences = selectedPaths.enumerated().map {
                 AnalysisImageReference(sourceImageID: "image-\($0.offset + 1)", filePath: $0.element)
             }
-            let prompt = VLMPromptLibrary.prompt(Self.prompt(for: job.analysisType), imageReferences: imageReferences)
             let images = try selectedPaths.map { try Data(contentsOf: URL(fileURLWithPath: $0)) }
-            let response = try await client.generateJSON(prompt: prompt, images: images)
+            let response = try await generateResponse(
+                type: job.analysisType,
+                references: imageReferences,
+                images: images
+            )
             let decoded = try Self.decode(response, type: job.analysisType)
             let requestTrace = try JSONEncoder().encode(AnalysisRequestTrace(images: imageReferences))
             let run = AnalysisRunRecord(
@@ -103,6 +106,52 @@ public actor AnalysisQueueProcessor {
         case .visualAppeal: VLMPromptLibrary.visualAppeal
         case .lifestyle: VLMPromptLibrary.lifestyle
         }
+    }
+
+    private func generateResponse(
+        type: AnalysisType,
+        references: [AnalysisImageReference],
+        images: [Data]
+    ) async throws -> Data {
+        guard type == .lifestyle, !references.isEmpty else {
+            let prompt = VLMPromptLibrary.prompt(Self.prompt(for: type), imageReferences: references)
+            return try await client.generateJSON(prompt: prompt, images: images)
+        }
+
+        var results: [LifestyleSignalResult] = []
+        var evidence: [LifestyleEvidence] = []
+        for (reference, image) in zip(references, images) {
+            let prompt = VLMPromptLibrary.prompt(VLMPromptLibrary.lifestyle, imageReferences: [reference]) + """
+
+            This request contains exactly one image. Every evidence source_image_id must be \(reference.sourceImageID).
+            """
+            let response = try await client.generateJSON(prompt: prompt, images: [image])
+            let result = try JSONDecoder().decode(LifestyleSignalResult.self, from: response)
+            guard result.actualWealth.lowercased() == "unknown" else { throw VLMClientError.invalidResponse }
+            results.append(result)
+            evidence.append(contentsOf: result.evidence.map {
+                LifestyleEvidence(
+                    category: $0.category,
+                    strength: $0.strength,
+                    sourceImageID: reference.sourceImageID,
+                    explanation: $0.explanation
+                )
+            })
+        }
+
+        let totalWeight = results.reduce(0.0) { $0 + max(0.05, $1.confidence) }
+        let aggregateScore = results.reduce(0.0) {
+            $0 + $1.lifestyleAffluenceSignal * max(0.05, $1.confidence)
+        } / totalWeight
+        let aggregateConfidence = results.map(\.confidence).reduce(0, +) / Double(results.count)
+        let aggregate = LifestyleSignalResult(
+            lifestyleAffluenceSignal: aggregateScore,
+            confidence: aggregateConfidence,
+            evidence: evidence
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(aggregate)
     }
 
     private enum DecodedResult {

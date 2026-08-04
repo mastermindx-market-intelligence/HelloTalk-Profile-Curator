@@ -123,7 +123,12 @@ private struct ProfileGridCard: View {
         VStack(alignment: .leading, spacing: 9) {
             Group {
                 if let path = item.previewPath, let image = NSImage(contentsOfFile: path) {
-                    Image(nsImage: image).resizable().scaledToFill()
+                    ZStack {
+                        Color.black.opacity(0.88)
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFit()
+                    }
                 } else {
                     ZStack {
                         Color.secondary.opacity(0.08)
@@ -131,7 +136,8 @@ private struct ProfileGridCard: View {
                     }
                 }
             }
-            .frame(height: 130)
+            .frame(maxWidth: .infinity)
+            .aspectRatio(4 / 5, contentMode: .fit)
             .clipped()
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
@@ -164,89 +170,126 @@ private struct ProfileGridCard: View {
     private func score(_ label: String, _ value: Double?) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(label).font(.caption2).foregroundStyle(.secondary)
-            Text(value.map { String(format: "%.0f", $0) } ?? "—").font(.caption.monospacedDigit())
+            Text(value.map { String(format: "%.0f", $0) } ?? "—")
+                .font(.caption.bold().monospacedDigit())
+                .foregroundStyle(value.map(scoreColor) ?? .secondary)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
 private struct ProfileDetailView: View {
     @ObservedObject var model: ReviewDashboardViewModel
+    @State private var enlargedImage: EnlargedImage?
 
     var body: some View {
         ScrollView {
             if let item = model.selected {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text(item.profile.displayName ?? item.profile.usernameNormalized).font(.title2.bold())
-                    Text(item.profile.usernameNormalized).font(.callout.monospaced()).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.profile.displayName ?? item.profile.usernameNormalized)
+                            .font(.title.bold())
+                        HStack(spacing: 8) {
+                            Text(item.profile.usernameNormalized)
+                                .font(.callout.monospaced())
+                                .foregroundStyle(.secondary)
+                            Text(humanized(item.profile.status))
+                                .font(.caption.bold())
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.accentColor.opacity(0.16), in: Capsule())
+                        }
+                    }
                     HStack {
                         Button("Keep") { model.setStatus(.shortlisted) }.keyboardShortcut("k", modifiers: [])
                         Button("Reject") { model.setStatus(.rejected) }.keyboardShortcut("r", modifiers: [])
                         Button("Contacted") { model.setStatus(.contacted) }.keyboardShortcut("c", modifiers: [])
                         Button("Reset") { model.setStatus(.review) }
                     }
-                    GroupBox("Extracted fields") {
+                    DetailSection(title: "Profile facts", systemImage: "person.text.rectangle") {
                         VStack(alignment: .leading, spacing: 7) {
-                            row("Age", item.profile.age.map(String.init) ?? "Unverified")
-                            row("Gender", item.profile.gender ?? "Unverified")
-                            row("MBTI", item.profile.mbti ?? "Missing")
-                            row("Group", item.profile.mbtiGroup ?? "None")
-                            row("Location", item.profile.cityNormalized ?? item.profile.provinceNormalized ?? "Unknown")
-                            row("Location tier", item.profile.locationTier.map(String.init) ?? "—")
-                            row("First seen", item.profile.firstSeenAt.formatted())
-                            row("Last seen", item.profile.lastSeenAt.formatted())
-                            row("Visits", String(item.profile.visitCount))
+                            DetailFieldRow(label: "Age", value: item.profile.age.map(String.init) ?? "Unverified")
+                            DetailFieldRow(label: "Gender", value: humanized(item.profile.gender ?? "Unverified"))
+                            DetailFieldRow(label: "MBTI", value: item.profile.mbti ?? "Missing")
+                            DetailFieldRow(label: "Group", value: humanized(item.profile.mbtiGroup ?? "None"))
+                            DetailFieldRow(label: "Location", value: item.profile.cityNormalized ?? item.profile.provinceNormalized ?? "Unknown")
+                            DetailFieldRow(label: "Location tier", value: item.profile.locationTier.map(String.init) ?? "—")
+                            DetailFieldRow(label: "First seen", value: item.profile.firstSeenAt.formatted(date: .abbreviated, time: .shortened))
+                            DetailFieldRow(label: "Last seen", value: item.profile.lastSeenAt.formatted(date: .abbreviated, time: .shortened))
+                            DetailFieldRow(label: "Visits", value: String(item.profile.visitCount))
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    GroupBox("Score breakdown") {
-                        VStack(alignment: .leading, spacing: 7) {
-                            row("Face visual appeal", format(item.profile.faceScore))
-                            row("Lifestyle signal", format(item.profile.lifestyleScore))
-                            row("Location", item.profile.locationScore.map(String.init) ?? "—")
-                            row("Completeness", format(item.profile.profileCompletenessScore))
-                            row("Overall", format(item.profile.overallScore))
-                            row("Analysis confidence", String(format: "%.0f%%", item.profile.analysisConfidence * 100))
+                    DetailSection(title: "Score breakdown", systemImage: "chart.bar.fill") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            ScoreMetricRow(label: "Face presentation", value: item.profile.faceScore)
+                            ScoreMetricRow(label: "Lifestyle signal", value: item.profile.lifestyleScore)
+                            ScoreMetricRow(label: "Location", value: item.profile.locationScore.map(Double.init))
+                            ScoreMetricRow(label: "Profile completeness", value: item.profile.profileCompletenessScore)
+                            ScoreMetricRow(label: "Overall", value: item.profile.overallScore, emphasized: true)
+                            ScoreMetricRow(label: "Analysis confidence", value: item.profile.analysisConfidence * 100)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if !model.selectedMedia.isEmpty {
-                        GroupBox("Retained media") {
+                        DetailSection(title: "Retained media", systemImage: "photo.on.rectangle.angled") {
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))]) {
                                 ForEach(model.selectedMedia) { media in
                                     if let image = NSImage(contentsOfFile: media.filePath) {
-                                        Image(nsImage: image).resizable().scaledToFill().frame(height: 100).clipped().clipShape(RoundedRectangle(cornerRadius: 6))
+                                        Button {
+                                            enlargedImage = EnlargedImage(
+                                                path: media.filePath,
+                                                title: mediaTitle(media),
+                                                detail: "Saved \(media.createdAt.formatted(date: .abbreviated, time: .shortened))"
+                                            )
+                                        } label: {
+                                            Image(nsImage: image)
+                                                .resizable()
+                                                .scaledToFill()
+                                                .frame(height: 100)
+                                                .clipped()
+                                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                                .overlay(alignment: .bottomTrailing) {
+                                                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                                        .font(.caption.bold())
+                                                        .padding(6)
+                                                        .foregroundStyle(.white)
+                                                        .background(.black.opacity(0.62), in: Circle())
+                                                        .padding(6)
+                                                }
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("Open larger view")
                                     }
                                 }
                             }
                         }
                     }
                     if !model.selectedAnalysisRuns.isEmpty {
-                        GroupBox("Qwen analysis evidence") {
+                        DetailSection(title: "Qwen analysis", systemImage: "sparkles.rectangle.stack") {
                             VStack(alignment: .leading, spacing: 10) {
-                                ForEach(model.selectedAnalysisRuns) { run in
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("\(run.analysisType) · \(run.modelName)").font(.caption.bold())
-                                        Text("Prompt \(run.promptVersion) · \(run.success ? "complete" : "failed")")
-                                            .font(.caption2).foregroundStyle(.secondary)
-                                        if let references = run.requestTrace?.images, !references.isEmpty {
-                                            ScrollView(.horizontal) {
-                                                HStack(alignment: .top, spacing: 8) {
-                                                    ForEach(references) { reference in
-                                                        AnalysisEvidenceImage(run: run, reference: reference)
-                                                    }
-                                                }
-                                            }
-                                            .scrollIndicators(.hidden)
-                                        }
-                                        if let response = run.responseJSON {
-                                            Text(response).font(.caption2.monospaced()).textSelection(.enabled).lineLimit(8)
-                                        }
+                                HStack {
+                                    Text("Scores and evidence are normalized for display.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    if model.isReanalyzing { ProgressView().controlSize(.small) }
+                                    Button("Re-run", systemImage: "arrow.triangle.2.circlepath") {
+                                        model.reanalyzeSelected()
                                     }
-                                    Divider()
+                                    .disabled(model.isReanalyzing)
+                                }
+                                ForEach(model.selectedAnalysisRuns) { run in
+                                    QwenAnalysisCard(run: run) { reference in
+                                        enlargedImage = EnlargedImage(
+                                            path: reference.filePath,
+                                            title: reference.sourceImageID,
+                                            detail: "Qwen analysis input"
+                                        )
+                                    }
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
-                    GroupBox("Notes") {
+                    DetailSection(title: "Notes", systemImage: "note.text") {
                         VStack {
                             TextEditor(text: $model.notesDraft).frame(minHeight: 90)
                             Button("Save notes") { model.saveNotes() }.frame(maxWidth: .infinity, alignment: .trailing)
@@ -260,58 +303,400 @@ private struct ProfileDetailView: View {
                     .frame(maxWidth: .infinity, minHeight: 500)
             }
         }
+        .sheet(item: $enlargedImage) { item in
+            EnlargedImageView(item: item)
+        }
     }
 
-    private func row(_ label: String, _ value: String) -> some View {
-        LabeledContent(label, value: value)
+    private func mediaTitle(_ media: MediaRecord) -> String {
+        switch media.typedKind {
+        case .profileTop: "Profile overview"
+        case .pfp: "Profile photo"
+        case .moment: "Moment"
+        case .faceCrop: "Face crop"
+        case .diagnostic: "Diagnostic capture"
+        }
     }
-    private func format(_ value: Double?) -> String { value.map { String(format: "%.1f", $0) } ?? "—" }
-    private func format(_ value: Double) -> String { String(format: "%.1f", value) }
 }
 
-private struct AnalysisEvidenceImage: View {
-    let run: AnalysisRunRecord
-    let reference: AnalysisImageReference
+private struct DetailSection<Content: View>: View {
+    let title: String
+    let systemImage: String
+    @ViewBuilder let content: Content
 
-    private var evidence: [LifestyleEvidence] {
-        run.lifestyleEvidence(sourceImageID: reference.sourceImageID)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+                .foregroundStyle(.primary)
+            content
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(nsColor: .separatorColor).opacity(0.7)))
+    }
+}
+
+private struct DetailFieldRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 108, alignment: .leading)
+            Text(value)
+                .font(.callout.weight(.medium))
+                .textSelection(.enabled)
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+private struct ScoreMetricRow: View {
+    let label: String
+    let value: Double?
+    var emphasized = false
+    var higherIsBetter = true
+
+    private var tint: Color {
+        guard let value else { return .secondary }
+        return scoreColor(higherIsBetter ? value : 100 - value)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Button {
-                NSWorkspace.shared.open(URL(fileURLWithPath: reference.filePath))
-            } label: {
-                Group {
-                    if let image = NSImage(contentsOfFile: reference.filePath) {
-                        Image(nsImage: image).resizable().scaledToFill()
-                    } else {
-                        ZStack {
-                            Color.secondary.opacity(0.08)
-                            Image(systemName: "photo.badge.exclamationmark").foregroundStyle(.secondary)
+        VStack(spacing: 5) {
+            HStack {
+                Text(label)
+                    .font(emphasized ? .callout.bold() : .callout)
+                Spacer()
+                Text(value.map { String(format: "%.0f", $0) } ?? "—")
+                    .font(.callout.bold().monospacedDigit())
+                    .foregroundStyle(tint)
+            }
+            ProgressView(value: min(100, max(0, value ?? 0)), total: 100)
+                .tint(tint)
+                .controlSize(.small)
+        }
+    }
+}
+
+private struct QwenAnalysisCard: View {
+    let run: AnalysisRunRecord
+    let openImage: (AnalysisImageReference) -> Void
+
+    private var references: [AnalysisImageReference] { run.requestTrace?.images ?? [] }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(analysisTitle).font(.headline)
+                    Text("\(run.modelName) · \(run.promptVersion)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(run.success ? "Complete" : "Failed")
+                    .font(.caption.bold())
+                    .foregroundStyle(run.success ? Color.green : Color.red)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background((run.success ? Color.green : Color.red).opacity(0.13), in: Capsule())
+            }
+
+            analysisSummary
+
+            if !references.isEmpty {
+                DisclosureGroup("Model inputs (\(references.count))") {
+                    AnalysisInputStrip(references: references, openImage: openImage)
+                        .padding(.top, 8)
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            }
+
+            if let response = run.responseJSON {
+                DisclosureGroup("Raw Qwen JSON") {
+                    Text(response)
+                        .font(.caption2.monospaced())
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                        .background(.black.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                        .padding(.top, 6)
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.7), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    @ViewBuilder
+    private var analysisSummary: some View {
+        if let result = run.faceVerificationResult {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(spacing: 6) {
+                    BooleanBadge(label: "Photographic face", value: result.isPhotographicHumanFace)
+                    BooleanBadge(label: "Clear enough", value: result.isFaceClearEnoughToScore)
+                }
+                HStack(spacing: 6) {
+                    BooleanBadge(label: "Not illustration", value: !result.isIllustrationOrAnime)
+                    BooleanBadge(label: "Not heavily filtered", value: !result.isHeavilyFiltered)
+                }
+                ScoreMetricRow(label: "Confidence", value: result.confidence * 100)
+            }
+        } else if let result = run.visualAppealResult {
+            VStack(alignment: .leading, spacing: 10) {
+                ScoreMetricRow(
+                    label: "Final face score",
+                    value: max(0, result.visualAppealScore - result.photoQualityPenalty),
+                    emphasized: true
+                )
+                ScoreMetricRow(label: "Presentation estimate", value: result.visualAppealScore)
+                ScoreMetricRow(label: "Photo-quality penalty", value: result.photoQualityPenalty, higherIsBetter: false)
+                ScoreMetricRow(label: "Confidence", value: result.confidence * 100)
+                if !result.notes.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Model notes").font(.caption.bold()).foregroundStyle(.secondary)
+                        ForEach(Array(result.notes.enumerated()), id: \.offset) { _, note in
+                            Label(note, systemImage: "circle.fill")
+                                .font(.caption)
+                                .labelStyle(TinyBulletLabelStyle())
                         }
                     }
                 }
-                .frame(width: 112, height: 86)
-                .clipped()
-                .clipShape(RoundedRectangle(cornerRadius: 6))
             }
-            .buttonStyle(.plain)
-            .help("Open \(reference.sourceImageID)")
+        } else if let result = run.lifestyleSignalResult {
+            VStack(alignment: .leading, spacing: 10) {
+                ScoreMetricRow(label: "Lifestyle signal", value: result.lifestyleAffluenceSignal, emphasized: true)
+                ScoreMetricRow(label: "Confidence", value: result.confidence * 100)
+                Text("Evidence")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+                if result.evidence.isEmpty {
+                    Text("No specific visible evidence returned.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(Array(result.evidence.enumerated()), id: \.offset) { _, evidence in
+                        QwenEvidenceRow(
+                            evidence: evidence,
+                            reference: references.first { $0.sourceImageID == evidence.sourceImageID },
+                            openImage: openImage
+                        )
+                    }
+                }
+                Text("Actual wealth is intentionally not inferred.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        } else {
+            Text(run.error ?? "This response could not be normalized.")
+                .font(.caption)
+                .foregroundStyle(run.success ? Color.secondary : Color.red)
+        }
+    }
 
-            Text(reference.sourceImageID).font(.caption2.monospaced()).foregroundStyle(.secondary)
-            if evidence.isEmpty {
-                Text("Model input").font(.caption2).foregroundStyle(.tertiary)
+    private var analysisTitle: String {
+        switch AnalysisType(rawValue: run.analysisType) {
+        case .faceVerification: "Face verification"
+        case .visualAppeal: "Face presentation"
+        case .lifestyle: "Lifestyle evidence"
+        case nil: humanized(run.analysisType)
+        }
+    }
+}
+
+private struct QwenEvidenceRow: View {
+    let evidence: LifestyleEvidence
+    let reference: AnalysisImageReference?
+    let openImage: (AnalysisImageReference) -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            if let reference {
+                AnalysisThumbnail(reference: reference, width: 86, height: 72) { openImage(reference) }
             } else {
-                ForEach(Array(evidence.enumerated()), id: \.offset) { _, item in
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("\(item.category) · \(item.strength)").font(.caption2.bold())
-                        Text(item.explanation).font(.caption2).lineLimit(4)
+                ZStack {
+                    Color.secondary.opacity(0.08)
+                    Image(systemName: "photo.badge.exclamationmark").foregroundStyle(.secondary)
+                }
+                .frame(width: 86, height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+            }
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text(humanized(evidence.category))
+                        .font(.callout.bold())
+                    Text(humanized(evidence.strength))
+                        .font(.caption2.bold())
+                        .foregroundStyle(strengthColor(evidence.strength))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(strengthColor(evidence.strength).opacity(0.14), in: Capsule())
+                    Spacer()
+                    Text("Qwen cited \(evidence.sourceImageID)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.tertiary)
+                }
+                Text(evidence.explanation)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(8)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct AnalysisInputStrip: View {
+    let references: [AnalysisImageReference]
+    let openImage: (AnalysisImageReference) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(references) { reference in
+                    VStack(alignment: .leading, spacing: 3) {
+                        AnalysisThumbnail(reference: reference, width: 84, height: 64) { openImage(reference) }
+                        Text(reference.sourceImageID)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
         }
-        .frame(width: 112, alignment: .leading)
+        .scrollIndicators(.hidden)
+    }
+}
+
+private struct AnalysisThumbnail: View {
+    let reference: AnalysisImageReference
+    let width: CGFloat
+    let height: CGFloat
+    let openImage: () -> Void
+
+    var body: some View {
+        Button(action: openImage) {
+            Group {
+                if let image = NSImage(contentsOfFile: reference.filePath) {
+                    Image(nsImage: image).resizable().scaledToFill()
+                } else {
+                    ZStack {
+                        Color.secondary.opacity(0.08)
+                        Image(systemName: "photo.badge.exclamationmark").foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(width: width, height: height)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+        }
+        .buttonStyle(.plain)
+        .help("Open \(reference.sourceImageID) larger")
+    }
+}
+
+private struct BooleanBadge: View {
+    let label: String
+    let value: Bool
+
+    var body: some View {
+        Label(label, systemImage: value ? "checkmark.circle.fill" : "xmark.circle.fill")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(value ? Color.green : Color.red)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background((value ? Color.green : Color.red).opacity(0.12), in: Capsule())
+    }
+}
+
+private struct TinyBulletLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            configuration.icon.font(.system(size: 4)).foregroundStyle(.secondary)
+            configuration.title
+        }
+    }
+}
+
+private func humanized(_ value: String) -> String {
+    value
+        .replacingOccurrences(of: "_", with: " ")
+        .replacingOccurrences(of: "-", with: " ")
+        .split(separator: " ")
+        .map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
+        .joined(separator: " ")
+}
+
+private func scoreColor(_ value: Double) -> Color {
+    switch value {
+    case 75...: .green
+    case 55..<75: .yellow
+    default: .red
+    }
+}
+
+private func strengthColor(_ strength: String) -> Color {
+    switch strength.lowercased() {
+    case "high", "strong": .green
+    case "medium", "moderate": .yellow
+    default: .red
+    }
+}
+
+private struct EnlargedImage: Identifiable {
+    let path: String
+    let title: String
+    let detail: String
+
+    var id: String { path }
+}
+
+private struct EnlargedImageView: View {
+    @Environment(\.dismiss) private var dismiss
+    let item: EnlargedImage
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.title).font(.headline)
+                    Text(item.detail).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Open in Preview", systemImage: "arrow.up.forward.app") {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: item.path))
+                }
+                Button("Close", systemImage: "xmark") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(14)
+
+            Divider()
+
+            ZStack {
+                Color.black.opacity(0.94)
+                if let image = NSImage(contentsOfFile: item.path) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(18)
+                } else {
+                    ContentUnavailableView("Image unavailable", systemImage: "photo.badge.exclamationmark")
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+        .frame(minWidth: 760, idealWidth: 980, minHeight: 580, idealHeight: 760)
     }
 }
 

@@ -1285,6 +1285,11 @@ final class InspectorViewModel: ObservableObject {
             }
             let retainedPhotos = scannedPhotos.filter(\.retained)
             let croppedAnalysis = try analyzer.analyze(cropped)
+            if kind == .moment,
+               let reason = MomentMediaCaptureValidator().rejectionReason(observations: croppedAnalysis.text) {
+                collectionStatus = "Skipped Moment capture · \(reason); open the full photo before saving"
+                return
+            }
             let largest = croppedAnalysis.faces.max {
                 $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height
             }
@@ -1370,8 +1375,8 @@ final class InspectorViewModel: ObservableObject {
                 return
             }
             let config = try VLMConfigurationStore.defaultStore().load()
-            let facePaths = media.filter { $0.usableFace || $0.typedKind == .pfp }.prefix(3).map(\.filePath)
-            let lifestylePaths = media.filter { $0.typedKind == .moment }.prefix(10).map(\.filePath)
+            let facePaths = AnalysisMediaSelector.faceMedia(from: media).map(\.filePath)
+            let lifestylePaths = AnalysisMediaSelector.lifestyleMedia(from: media).map(\.filePath)
             var queued = 0
             if !facePaths.isEmpty {
                 _ = try profileRepository.enqueueAnalysis(

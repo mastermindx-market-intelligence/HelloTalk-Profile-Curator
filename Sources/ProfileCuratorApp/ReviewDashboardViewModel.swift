@@ -47,6 +47,7 @@ final class ReviewDashboardViewModel: ObservableObject {
     @Published var statusMessage = "Loading local collection…"
     @Published var notesDraft = ""
     @Published var errorMessage: String?
+    @Published var isReanalyzing = false
 
     let repository: ProfileRepository?
     let dataRoot: URL?
@@ -80,7 +81,9 @@ final class ReviewDashboardViewModel: ObservableObject {
             let result = try repository.page(makeQuery())
             records = try result.records.map { profile in
                 let media = try repository.media(profileID: profile.id, retainedOnly: true)
-                let preview = media.first(where: { $0.typedKind == .pfp || $0.typedKind == .faceCrop }) ?? media.first
+                let preview = AnalysisMediaSelector.faceMedia(from: media, limit: 1).first
+                    ?? media.first(where: { $0.typedKind == .pfp })
+                    ?? media.first
                 return DashboardProfile(
                     profile: profile,
                     mediaCount: media.count,
@@ -107,10 +110,77 @@ final class ReviewDashboardViewModel: ObservableObject {
         notesDraft = item.profile.notes
         do {
             selectedMedia = try repository?.media(profileID: item.id, retainedOnly: true) ?? []
-            selectedAnalysisRuns = try repository?.analysisRuns(profileID: item.id) ?? []
+            selectedAnalysisRuns = latestRunPerType(try repository?.analysisRuns(profileID: item.id) ?? [])
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func reanalyzeSelected() {
+        guard !isReanalyzing,
+              let id = selectedProfileID,
+              let repository else { return }
+        isReanalyzing = true
+        statusMessage = "Running fresh Qwen analysis…"
+        Task {
+            do {
+                let media = try repository.media(profileID: id, retainedOnly: true)
+                let configuration = try VLMConfigurationStore.defaultStore().load()
+                let facePaths = AnalysisMediaSelector.faceMedia(from: media).map(\.filePath)
+                let lifestylePaths = AnalysisMediaSelector.lifestyleMedia(from: media).map(\.filePath)
+                var queued = 0
+                if !facePaths.isEmpty {
+                    _ = try repository.enqueueAnalysis(
+                        profileID: id,
+                        type: .faceVerification,
+                        modelName: configuration.model,
+                        promptVersion: VLMPromptLibrary.faceVerificationVersion,
+                        mediaPaths: Array(facePaths)
+                    )
+                    _ = try repository.enqueueAnalysis(
+                        profileID: id,
+                        type: .visualAppeal,
+                        modelName: configuration.model,
+                        promptVersion: VLMPromptLibrary.visualAppealVersion,
+                        mediaPaths: Array(facePaths)
+                    )
+                    queued += 2
+                }
+                if !lifestylePaths.isEmpty {
+                    _ = try repository.enqueueAnalysis(
+                        profileID: id,
+                        type: .lifestyle,
+                        modelName: configuration.model,
+                        promptVersion: VLMPromptLibrary.lifestyleVersion,
+                        mediaPaths: Array(lifestylePaths)
+                    )
+                    queued += 1
+                }
+                guard queued > 0 else { throw ReanalysisError.noMedia }
+
+                let processor = AnalysisQueueProcessor(
+                    repository: repository,
+                    client: OllamaVLMClient(configuration: configuration),
+                    configuration: configuration
+                )
+                while try repository.nextAnalysisJob() != nil {
+                    _ = await processor.processNext()
+                }
+                refresh()
+                if let item = records.first(where: { $0.id == id }) { select(item) }
+                statusMessage = "Fresh Qwen analysis complete"
+                errorMessage = nil
+            } catch {
+                errorMessage = error.localizedDescription
+                statusMessage = "Qwen analysis failed"
+            }
+            isReanalyzing = false
+        }
+    }
+
+    private func latestRunPerType(_ runs: [AnalysisRunRecord]) -> [AnalysisRunRecord] {
+        var seen = Set<String>()
+        return runs.filter { seen.insert($0.analysisType).inserted }
     }
 
     func setStatus(_ status: ProfileStatus) {
@@ -251,6 +321,12 @@ final class ReviewDashboardViewModel: ObservableObject {
         ]
         return fields.map(csvEscape).joined(separator: ",")
     }
+}
+
+private enum ReanalysisError: LocalizedError {
+    case noMedia
+
+    var errorDescription: String? { "No retained media is available for analysis." }
 }
 
 enum ExportFormat: String { case csv, json }

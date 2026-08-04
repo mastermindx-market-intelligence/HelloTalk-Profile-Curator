@@ -38,6 +38,33 @@ final class VLMIntegrationTests: XCTestCase {
         XCTAssertEqual(result.visualAppealScore, 82)
     }
 
+    func testQwenScoresAndConfidenceAreNormalizedAtDecodeBoundary() throws {
+        let visual = Data(#"{"visual_appeal_score":140,"confidence":95,"photo_quality_penalty":120,"notes":[]}"#.utf8)
+        let lifestyle = Data(#"{"lifestyle_affluence_signal":-8,"confidence":85,"evidence":[],"actual_wealth":"unknown"}"#.utf8)
+        let face = Data(#"{"is_photographic_human_face":true,"is_illustration_or_anime":false,"is_heavily_filtered":false,"is_face_clear_enough_to_score":true,"confidence":98}"#.utf8)
+
+        let visualResult = try JSONDecoder().decode(VisualAppealResult.self, from: visual)
+        let lifestyleResult = try JSONDecoder().decode(LifestyleSignalResult.self, from: lifestyle)
+        let faceResult = try JSONDecoder().decode(FaceVerificationResult.self, from: face)
+
+        XCTAssertEqual(visualResult.visualAppealScore, 100)
+        XCTAssertEqual(visualResult.photoQualityPenalty, 100)
+        XCTAssertEqual(visualResult.confidence, 0.95, accuracy: 0.001)
+        XCTAssertEqual(lifestyleResult.lifestyleAffluenceSignal, 0)
+        XCTAssertEqual(lifestyleResult.confidence, 0.85, accuracy: 0.001)
+        XCTAssertEqual(faceResult.confidence, 0.98, accuracy: 0.001)
+    }
+
+    func testFaceAnalysisPrefersCloseupOverSmallFaceInsideScreenshot() {
+        let closeup = mediaRecord(id: "closeup", sequence: 2, ratio: 0.54, quality: 0.52)
+        let screenshot = mediaRecord(id: "screenshot", sequence: 1, ratio: 0.06, quality: 0.60)
+        let portrait = mediaRecord(id: "portrait", sequence: 3, ratio: 0.18, quality: 0.45)
+
+        let selected = AnalysisMediaSelector.faceMedia(from: [screenshot, portrait, closeup])
+
+        XCTAssertEqual(selected.map(\.id), ["closeup", "portrait"])
+    }
+
     func testOfflineFailureStaysInPersistentRetryQueue() async throws {
         let context = try temporaryRepository()
         let profile = try context.repository.upsert(ProfileDraft(usernameRaw: "@offline", age: 19, gender: .female, mbti: .infj))
@@ -115,10 +142,13 @@ final class VLMIntegrationTests: XCTestCase {
         let run = try XCTUnwrap(context.repository.analysisRuns(profileID: profile.id).first)
         XCTAssertEqual(run.requestTrace?.images.map(\.sourceImageID), ["image-1", "image-2"])
         XCTAssertEqual(run.requestTrace?.images.map(\.filePath), [first.path, second.path])
+        XCTAssertEqual(run.lifestyleEvidence(sourceImageID: "image-1").first?.category, "travel")
         XCTAssertEqual(run.lifestyleEvidence(sourceImageID: "image-2").first?.category, "travel")
         XCTAssertEqual(try XCTUnwrap(context.repository.profile(id: profile.id)).analysisConfidence, 0.8, accuracy: 0.001)
-        let prompt = await client.lastPrompt
-        XCTAssertTrue(prompt?.contains("image-1, image-2") == true)
+        let prompts = await client.prompts
+        XCTAssertEqual(prompts.count, 2)
+        XCTAssertTrue(prompts[0].contains("must be image-1"))
+        XCTAssertTrue(prompts[1].contains("must be image-2"))
     }
 
     private func temporaryRepository() throws -> (repository: ProfileRepository, root: URL) {
@@ -127,15 +157,34 @@ final class VLMIntegrationTests: XCTestCase {
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         return (try ProfileRepository(databasePath: root.appendingPathComponent("test.sqlite").path), root)
     }
+
+    private func mediaRecord(id: String, sequence: Int, ratio: Double, quality: Double) -> MediaRecord {
+        MediaRecord(
+            id: id,
+            profileID: "profile",
+            kind: MediaKind.moment.rawValue,
+            filePath: "/tmp/\(id).png",
+            perceptualHash: id,
+            sourceSequence: sequence,
+            faceCount: 1,
+            largestFaceRatio: ratio,
+            faceCaptureQuality: quality,
+            usableFace: true,
+            retained: true,
+            createdAt: Date()
+        )
+    }
 }
 
 private actor MockVLMClient: VLMClientProtocol {
     let result: Result<Data, Error>
     private(set) var lastPrompt: String?
+    private(set) var prompts: [String] = []
     init(result: Result<Data, Error>) { self.result = result }
     func health() async throws -> VLMHealth { VLMHealth(reachable: true, configuredModelAvailable: true, availableModels: []) }
     func generateJSON(prompt: String, images: [Data]) async throws -> Data {
         lastPrompt = prompt
+        prompts.append(prompt)
         return try result.get()
     }
 }
