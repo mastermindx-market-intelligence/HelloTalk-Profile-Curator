@@ -9,6 +9,7 @@ public struct VisibleRecommendationTarget: Identifiable, Hashable, Sendable {
     public let photoPoint: NormalizedPoint
     public let safePhotoRegion: NormalizedRect
     public let confidence: Float
+    public let isPartialEdgeFallback: Bool
 
     public init(
         id: UUID = UUID(),
@@ -18,7 +19,8 @@ public struct VisibleRecommendationTarget: Identifiable, Hashable, Sendable {
         ageEvidence: RecommendationAgeCandidate?,
         photoPoint: NormalizedPoint,
         safePhotoRegion: NormalizedRect,
-        confidence: Float
+        confidence: Float,
+        isPartialEdgeFallback: Bool = false
     ) {
         self.id = id
         self.profileKey = profileKey.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -28,15 +30,19 @@ public struct VisibleRecommendationTarget: Identifiable, Hashable, Sendable {
         self.photoPoint = photoPoint
         self.safePhotoRegion = safePhotoRegion
         self.confidence = confidence
+        self.isPartialEdgeFallback = isPartialEdgeFallback
     }
 
     public var plannedAction: PlannedAction {
         let ageDescription = displayedAge.map { "displayed age \($0)" } ?? "age unavailable"
+        let targetDescription = isPartialEdgeFallback
+            ? "partially visible next recommendation"
+            : profileKey
         return PlannedAction(
             kind: .openRecommendationCard,
             point: photoPoint,
             requiredSafeRegion: safePhotoRegion,
-            rationale: "Dry-run visible-card photo proposal for \(profileKey), \(ageDescription)"
+            rationale: "Dry-run visible-card photo proposal for \(targetDescription), \(ageDescription)"
         )
     }
 }
@@ -113,6 +119,28 @@ public struct VisibleRecommendationTargetDetector: Sendable {
                 confidence: min(age.confidence, galleryAnchor.confidence)
             )
         })
+
+        // HelloTalk leaves a narrow sliver of the next horizontal card visible.
+        // Its name/age may be off-screen, but the outer edge of its avatar is
+        // still tappable. Keep this as an unknown-age fallback; the opened
+        // profile must still pass normal age and gender verification.
+        if targets.count >= 2,
+           !targets.contains(where: { $0.photoPoint.x > 0.92 }) {
+            let rowY = targets.map(\.photoPoint.y).sorted()[targets.count / 2]
+            let point = NormalizedPoint(x: 0.975, y: rowY)
+            if isSafePhotoPoint(point, galleryAnchor: galleryAnchor) {
+                targets.append(VisibleRecommendationTarget(
+                    profileKey: "partial-next-edge",
+                    displayName: nil,
+                    displayedAge: nil,
+                    ageEvidence: nil,
+                    photoPoint: point,
+                    safePhotoRegion: centeredRegion(around: point, width: 0.035, height: 0.08),
+                    confidence: min(0.55, galleryAnchor.confidence),
+                    isPartialEdgeFallback: true
+                ))
+            }
+        }
 
         return targets
         .uniqued(by: \VisibleRecommendationTarget.profileKey)
@@ -203,8 +231,8 @@ public struct VisibleRecommendationTargetRanker: Sendable {
 
     public func ranked(_ targets: [VisibleRecommendationTarget]) -> [VisibleRecommendationTarget] {
         targets.sorted { lhs, rhs in
-            let lhsPriority = agePriority(lhs.displayedAge)
-            let rhsPriority = agePriority(rhs.displayedAge)
+            let lhsPriority = agePriority(lhs)
+            let rhsPriority = agePriority(rhs)
             if lhsPriority != rhsPriority { return lhsPriority < rhsPriority }
             if lhsPriority <= 1, lhs.displayedAge != rhs.displayedAge {
                 return (lhs.displayedAge ?? Int.max) < (rhs.displayedAge ?? Int.max)
@@ -214,11 +242,15 @@ public struct VisibleRecommendationTargetRanker: Sendable {
         }
     }
 
-    private func agePriority(_ age: Int?) -> Int {
-        guard let age else { return 2 }
-        if ProfileEligibilityPolicy.adultTargetAges.contains(age) { return 0 }
-        if ProfileEligibilityPolicy.primaryMBTIAgeException.contains(age) { return 1 }
-        return 3
+    private func agePriority(_ target: VisibleRecommendationTarget) -> Int {
+        guard let age = target.displayedAge else {
+            return target.isPartialEdgeFallback ? 2 : 1
+        }
+        // Age 22 is worth inspecting during discovery even though final profile
+        // eligibility remains independently verified after opening.
+        if (18...22).contains(age) { return 0 }
+        if ProfileEligibilityPolicy.primaryMBTIAgeException.contains(age) { return 3 }
+        return 4
     }
 }
 

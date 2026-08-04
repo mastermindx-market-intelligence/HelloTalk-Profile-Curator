@@ -150,6 +150,8 @@ final class InspectorViewModel: ObservableObject {
     private var automationViewerChromeProbed = false
     private var automationViewerIndices: Set<Int> = []
     private var automationMomentDetectionRetries = 0
+    private var automationDeclaredMomentPostCount: Int?
+    private var automationOpenedMomentPostCount = 0
     private var automationCollectedUsername: String?
     private var automationCustomSearchVisitedKeys: Set<String> = []
     private var automationCustomSearchRefreshCount = 0
@@ -331,6 +333,8 @@ final class InspectorViewModel: ObservableObject {
         automationViewerChromeProbed = false
         automationViewerIndices = []
         automationMomentDetectionRetries = 0
+        automationDeclaredMomentPostCount = nil
+        automationOpenedMomentPostCount = 0
         automationCustomSearchVisitedKeys = []
         automationCustomSearchRefreshCount = 0
         automationCustomSearchCandidateLocation = nil
@@ -572,8 +576,10 @@ final class InspectorViewModel: ObservableObject {
             guard automationPhase == .scanMoments else {
                 throw AutomationRuntimeError.unknownState("Unexpected Moment viewer")
             }
+            let openedNewPost = !automationPendingMomentKeys.isEmpty
             automationMomentKeys.formUnion(automationPendingMomentKeys)
             automationPendingMomentKeys = []
+            if openedNewPost { automationOpenedMomentPostCount += 1 }
             checkpointViewerPhoto()
             if let profileID = currentCollectedProfile()?.id {
                 try? saveCollectionCheckpoint(profileID: profileID)
@@ -667,6 +673,7 @@ final class InspectorViewModel: ObservableObject {
                   let moments = profileInteractionSafety.tabAction(named: "Moments", in: observations) else {
                 throw AutomationRuntimeError.unknownState("The live Moments tab OCR anchor is unavailable; refusing a blind calibrated click")
             }
+            automationDeclaredMomentPostCount = MomentPostCountParser().count(in: observations)
             _ = try await performClick(moments, context: .profile, expecting: .contentHashChanged(previous: snapshot.fingerprint))
             automationPhase = .scanMoments
 
@@ -960,6 +967,17 @@ final class InspectorViewModel: ObservableObject {
     }
 
     private func scanVisibleMoments(_ snapshot: ObservationSnapshot) async throws {
+        if let observedCount = MomentPostCountParser().count(in: analysis?.text ?? []) {
+            automationDeclaredMomentPostCount = observedCount
+        }
+        if MomentPostProgressPolicy().shouldFinish(
+            declaredPostCount: automationDeclaredMomentPostCount,
+            openedPostCount: automationOpenedMomentPostCount
+        ) {
+            recordEvent(.observation, summary: "Singleton Moment post already captured · skipping animated-cover rediscovery")
+            try await finishMediaCollection(snapshot)
+            return
+        }
         if scannedMomentCount() >= CollectionLimits.hardenedDefault.maximumScannedPhotos {
             try await finishMediaCollection(snapshot)
             return
@@ -1491,6 +1509,8 @@ final class InspectorViewModel: ObservableObject {
         automationViewerChromeProbed = false
         automationViewerIndices = []
         automationMomentDetectionRetries = 0
+        automationDeclaredMomentPostCount = nil
+        automationOpenedMomentPostCount = 0
     }
 
     private func startQwenWorkerIfNeeded() {

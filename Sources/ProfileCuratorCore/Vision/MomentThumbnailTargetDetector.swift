@@ -6,6 +6,33 @@ public enum MomentThumbnailSamplingPolicy {
     public static let intervalMilliseconds = 700
 }
 
+public struct MomentPostCountParser: Sendable {
+    public init() {}
+
+    public func count(in observations: [OCRObservation]) -> Int? {
+        observations.compactMap { observation -> (Int, Float)? in
+            let text = observation.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard text.range(
+                of: #"^mom[a-z ]{0,10}\d{1,3}$"#,
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil,
+            let value = Int(text.filter(\.isNumber)),
+            value > 0 else { return nil }
+            return (value, observation.confidence)
+        }.max { $0.1 < $1.1 }?.0
+    }
+}
+
+public struct MomentPostProgressPolicy: Sendable {
+    public init() {}
+
+    public func shouldFinish(declaredPostCount: Int?, openedPostCount: Int) -> Bool {
+        // Animated covers do not have stable hashes. For a singleton feed, one
+        // verified viewer entry exhausts the only post regardless of frame hash.
+        declaredPostCount == 1 && openedPostCount >= 1
+    }
+}
+
 public struct MomentThumbnailTarget: Identifiable, Hashable, Sendable {
     public let id: UUID
     public let index: Int
@@ -69,7 +96,7 @@ public struct MomentThumbnailTargetDetector: Sendable {
               let pixels = MomentPixelBuffer(image: image) else {
             return []
         }
-        let declaredPostCount = declaredMomentPostCount(in: observations)
+        let declaredPostCount = MomentPostCountParser().count(in: observations)
         // Some profiles expose Moments as a timeline rather than a square
         // gallery. The post header and caption occupy the upper part of the
         // calibrated region; treating that chrome as row one opens Details.
@@ -199,19 +226,6 @@ public struct MomentThumbnailTargetDetector: Sendable {
             targets.isEmpty ? timelineTargets : targets,
             toDeclaredPostCount: declaredPostCount
         )
-    }
-
-    private func declaredMomentPostCount(in observations: [OCRObservation]) -> Int? {
-        let pattern = #"\bMoments\s*(\d{1,3})\b"#
-        for observation in observations {
-            let text = observation.text
-            guard let match = text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else {
-                continue
-            }
-            let token = text[match].filter(\.isNumber)
-            if let count = Int(token), count > 0 { return count }
-        }
-        return nil
     }
 
     private func limited(

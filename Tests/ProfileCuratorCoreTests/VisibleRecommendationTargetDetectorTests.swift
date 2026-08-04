@@ -1,7 +1,24 @@
+import ImageIO
 import XCTest
 @testable import ProfileCuratorCore
 
 final class VisibleRecommendationTargetDetectorTests: XCTestCase {
+    func testOptionalLiveGalleryExposesPartialThirdCardFallback() throws {
+        guard let path = ProcessInfo.processInfo.environment["HELLOTALK_PARTIAL_GALLERY"] else {
+            throw XCTSkip("No live partial-gallery fixture supplied")
+        }
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let observations = try VisionFixtureAnalyzer().analyze(image).text
+
+        let targets = VisibleRecommendationTargetDetector().targets(in: observations)
+        let partial = try XCTUnwrap(targets.first(where: \.isPartialEdgeFallback))
+
+        XCTAssertGreaterThan(partial.photoPoint.x, 0.95)
+        XCTAssertNil(partial.displayedAge)
+        XCTAssertTrue(partial.safePhotoRegion.contains(partial.photoPoint))
+    }
+
     func testDerivesPhotoPointAboveGalleryAgeBadge() throws {
         let observations = [
             observation("Suggested for You", x: 0.06, y: 0.50, width: 0.42, height: 0.04),
@@ -34,7 +51,8 @@ final class VisibleRecommendationTargetDetectorTests: XCTestCase {
 
         XCTAssertEqual(first.displayedAge, 22)
         XCTAssertNil(second.displayedAge)
-        XCTAssertEqual(targets.count, 2)
+        XCTAssertEqual(targets.filter { !$0.isPartialEdgeFallback }.count, 2)
+        XCTAssertEqual(targets.filter(\.isPartialEdgeFallback).count, 1)
     }
 
     func testRequiresSuggestedAnchorAndRejectsAgesBelowSocialBand() {
@@ -115,6 +133,35 @@ final class VisibleRecommendationTargetDetectorTests: XCTestCase {
         XCTAssertEqual(ranked[1].profileKey, "right-21")
         XCTAssertEqual(ranked[2].profileKey, "conditional-24")
         XCTAssertEqual(ranked.last?.profileKey, "left-35")
+    }
+
+    func testPartialThirdCardRanksAheadOfConfirmedOlderVisibleCards() throws {
+        let age28 = target("visible-28", age: 28, x: 0.18)
+        let age35 = target("visible-35", age: 35, x: 0.58)
+        let partial = VisibleRecommendationTarget(
+            profileKey: "partial-next-edge",
+            displayedAge: nil,
+            ageEvidence: nil,
+            photoPoint: NormalizedPoint(x: 0.975, y: 0.62),
+            safePhotoRegion: NormalizedRect(x: 0.955, y: 0.58, width: 0.035, height: 0.08),
+            confidence: 0.55,
+            isPartialEdgeFallback: true
+        )
+
+        let ranked = VisibleRecommendationTargetRanker().ranked([age28, partial, age35])
+
+        XCTAssertEqual(ranked.first?.profileKey, "partial-next-edge")
+    }
+
+    private func target(_ key: String, age: Int, x: Double) -> VisibleRecommendationTarget {
+        VisibleRecommendationTarget(
+            profileKey: key,
+            displayedAge: age,
+            ageEvidence: nil,
+            photoPoint: NormalizedPoint(x: x, y: 0.62),
+            safePhotoRegion: NormalizedRect(x: x - 0.06, y: 0.56, width: 0.12, height: 0.12),
+            confidence: 0.9
+        )
     }
 
     private func observation(

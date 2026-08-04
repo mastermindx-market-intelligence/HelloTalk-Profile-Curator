@@ -201,6 +201,23 @@ final class MomentNavigationTests: XCTestCase {
         )
     }
 
+    func testSingletonMomentFinishesAfterOneViewerDespiteAnimatedHashes() {
+        let parser = MomentPostCountParser()
+        let exact = parser.count(in: [
+            OCRObservation(text: "Moments 1", confidence: 0.95, bounds: NormalizedRect(x: 0.4, y: 0.2, width: 0.2, height: 0.03))
+        ])
+        let observedOCRVariant = parser.count(in: [
+            OCRObservation(text: "Mom pits 1", confidence: 0.82, bounds: NormalizedRect(x: 0.4, y: 0.2, width: 0.2, height: 0.03))
+        ])
+        let policy = MomentPostProgressPolicy()
+
+        XCTAssertEqual(exact, 1)
+        XCTAssertEqual(observedOCRVariant, 1)
+        XCTAssertFalse(policy.shouldFinish(declaredPostCount: 1, openedPostCount: 0))
+        XCTAssertTrue(policy.shouldFinish(declaredPostCount: 1, openedPostCount: 1))
+        XCTAssertFalse(policy.shouldFinish(declaredPostCount: 6, openedPostCount: 1))
+    }
+
     func testMomentGridRequiresDedicatedCalibrationRegion() {
         let image = try! makeMomentGridImage(rows: 2, finalRowColumns: 2)
         XCTAssertTrue(MomentThumbnailTargetDetector().targets(in: image, from: []).isEmpty)
