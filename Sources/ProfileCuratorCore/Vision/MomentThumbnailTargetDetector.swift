@@ -64,13 +64,11 @@ public struct MomentThumbnailTargetDetector: Sendable {
               let pixels = MomentPixelBuffer(image: image) else {
             return []
         }
-
-        let timelineTargets = verticalTimelineTargets(
-            observations: observations,
-            faces: faces,
-            searchBounds: searchMark.bounds
-        )
-        if !timelineTargets.isEmpty { return timelineTargets }
+        // Production captures must prove that the visible three-column geometry
+        // belongs to the profile's top Moments gallery. Embedded photo mosaics in
+        // timeline posts can have nearly identical pixel structure but open the
+        // post container instead of a full-photo viewer.
+        guard observations.isEmpty || hasTopGalleryAnchors(observations) else { return [] }
 
         let columns = 3
         let left = max(0, Int((searchMark.bounds.minX * Double(pixels.width)).rounded()))
@@ -168,48 +166,20 @@ public struct MomentThumbnailTargetDetector: Sendable {
         return targets
     }
 
-    private func verticalTimelineTargets(
-        observations: [OCRObservation],
-        faces: [DetectedFace],
-        searchBounds: NormalizedRect
-    ) -> [MomentThumbnailTarget] {
-        let dayPattern = try? NSRegularExpression(pattern: #"\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b"#)
-        let datedPosts = observations.filter { observation in
-            let range = NSRange(observation.text.startIndex..<observation.text.endIndex, in: observation.text)
-            return observation.confidence >= 0.45
-                && observation.bounds.center.y >= searchBounds.minY
-                && observation.bounds.center.y <= searchBounds.maxY
-                && dayPattern?.firstMatch(in: observation.text, range: range) != nil
-        }
-
-        return datedPosts.enumerated().compactMap { index, date in
-            let matchingFace = faces
-                .filter {
-                    searchBounds.contains($0.bounds.center)
-                        && $0.bounds.center.y >= date.bounds.maxY + 0.055
-                        && $0.bounds.center.y <= date.bounds.maxY + 0.36
-                }
-                .max { lhs, rhs in
-                    lhs.bounds.width * lhs.bounds.height < rhs.bounds.width * rhs.bounds.height
-                }
-            let proposed = matchingFace?.bounds.center ?? NormalizedPoint(
-                x: max(searchBounds.minX + 0.20, 0.28),
-                y: min(searchBounds.maxY - 0.06, date.bounds.maxY + 0.20)
-            )
-            guard searchBounds.contains(proposed),
-                  proposed.y < 0.86,
-                  !observations.contains(where: {
-                      $0.bounds.contains(proposed)
-                          && $0.text.range(of: "install|download|shop", options: [.regularExpression, .caseInsensitive]) != nil
-                  }) else { return nil }
-
-            let width = 0.14
-            let height = 0.12
-            let minX = min(max(searchBounds.minX, proposed.x - width / 2), searchBounds.maxX - width)
-            let minY = min(max(searchBounds.minY, proposed.y - height / 2), searchBounds.maxY - height)
-            let safe = NormalizedRect(x: minX, y: minY, width: width, height: height)
-            return MomentThumbnailTarget(index: 100 + index, point: proposed, safePhotoRegion: safe)
-        }
+    private func hasTopGalleryAnchors(_ observations: [OCRObservation]) -> Bool {
+        let text = observations.map(\.text).joined(separator: " · ")
+        let matcher = OCRAnchorMatcher()
+        let hasTabs = matcher.contains(anchor: "About Me", in: text)
+            && matcher.contains(anchor: "Moments", in: text)
+            && matcher.contains(anchor: "Achievements", in: text)
+        let hasProfileUsername = text.range(
+            of: #"@[A-Z0-9_.-]{2,40}"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+        let isDetails = matcher.contains(anchor: "Details", in: text)
+            && (matcher.contains(anchor: "Type a message", in: text)
+                || matcher.contains(anchor: "Comments", in: text))
+        return hasTabs && hasProfileUsername && !isDetails
     }
 
     private func bestGridStart(

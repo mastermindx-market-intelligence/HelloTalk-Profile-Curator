@@ -188,7 +188,7 @@ public enum ObservedHelloTalkCalibration {
         CalibrationMark(
             context: .momentsFeed,
             kind: .safeMomentThumbnailGrid,
-            bounds: NormalizedRect(x: 0.057, y: 0.20, width: 0.78, height: 0.66),
+            bounds: NormalizedRect(x: 0.057, y: 0.20, width: 0.78, height: 0.69),
             confirmed: true
         ),
         CalibrationMark(

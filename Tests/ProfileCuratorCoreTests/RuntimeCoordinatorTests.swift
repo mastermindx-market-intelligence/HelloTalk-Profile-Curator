@@ -20,13 +20,25 @@ final class RuntimeCoordinatorTests: XCTestCase {
             currentProfileID: "id",
             scannedPhotoCount: 30,
             retainedPhotoCount: 15,
-            perceptualHashes: ["abc"]
+            perceptualHashes: ["abc"],
+            momentVisitKeys: ["thumbnail|def"]
         )
         try store.save(checkpoint)
         let restored = try XCTUnwrap(store.load())
         XCTAssertEqual(restored.scannedPhotoCount, 20)
         XCTAssertEqual(restored.retainedPhotoCount, 10)
         XCTAssertEqual(restored.navigation.state, .inspectPFPViewer)
+        XCTAssertEqual(restored.momentVisitKeys, ["thumbnail|def"])
+    }
+
+    func testLegacyCheckpointDefaultsMomentVisitKeysToEmpty() throws {
+        let data = #"{"navigation":{"state":"profileTop","enteredAt":0,"retryCount":0},"currentUsername":"@legacy","currentProfileID":"id","scannedPhotoCount":1,"retainedPhotoCount":1,"perceptualHashes":["abc"],"updatedAt":0}"#.data(using: .utf8)!
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+
+        let restored = try decoder.decode(CollectionCheckpoint.self, from: data)
+
+        XCTAssertTrue(restored.momentVisitKeys.isEmpty)
     }
 
     func testUnknownAndTimeoutFailClosed() {

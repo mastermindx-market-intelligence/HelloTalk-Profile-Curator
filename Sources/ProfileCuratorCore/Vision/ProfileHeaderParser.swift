@@ -66,7 +66,8 @@ public struct OCRAnchorMatcher: Sendable {
         }
 
         let knownAlternatives: [String: [String]] = [
-            "AI Photo Gift": ["Al Photo Gift"]
+            "AI Photo Gift": ["Al Photo Gift"],
+            "Moments": ["Momopts"]
         ]
         return knownAlternatives[anchor, default: []].contains {
             combinedOCRText.localizedCaseInsensitiveContains($0)

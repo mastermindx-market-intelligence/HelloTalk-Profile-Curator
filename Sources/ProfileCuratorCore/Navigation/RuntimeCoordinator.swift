@@ -95,6 +95,7 @@ public struct CollectionCheckpoint: Codable, Sendable {
     public let scannedPhotoCount: Int
     public let retainedPhotoCount: Int
     public let perceptualHashes: Set<String>
+    public let momentVisitKeys: Set<String>
     public let updatedAt: Date
 
     public init(
@@ -104,6 +105,7 @@ public struct CollectionCheckpoint: Codable, Sendable {
         scannedPhotoCount: Int,
         retainedPhotoCount: Int,
         perceptualHashes: Set<String>,
+        momentVisitKeys: Set<String> = [],
         updatedAt: Date = Date()
     ) {
         self.navigation = navigation
@@ -112,7 +114,27 @@ public struct CollectionCheckpoint: Codable, Sendable {
         self.scannedPhotoCount = min(20, max(0, scannedPhotoCount))
         self.retainedPhotoCount = min(10, max(0, retainedPhotoCount))
         self.perceptualHashes = perceptualHashes
+        self.momentVisitKeys = momentVisitKeys
         self.updatedAt = updatedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case navigation, currentUsername, currentProfileID, scannedPhotoCount
+        case retainedPhotoCount, perceptualHashes, momentVisitKeys, updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            navigation: try container.decode(NavigationSnapshot.self, forKey: .navigation),
+            currentUsername: try container.decodeIfPresent(String.self, forKey: .currentUsername),
+            currentProfileID: try container.decodeIfPresent(String.self, forKey: .currentProfileID),
+            scannedPhotoCount: try container.decode(Int.self, forKey: .scannedPhotoCount),
+            retainedPhotoCount: try container.decode(Int.self, forKey: .retainedPhotoCount),
+            perceptualHashes: try container.decode(Set<String>.self, forKey: .perceptualHashes),
+            momentVisitKeys: try container.decodeIfPresent(Set<String>.self, forKey: .momentVisitKeys) ?? [],
+            updatedAt: try container.decode(Date.self, forKey: .updatedAt)
+        )
     }
 }
 

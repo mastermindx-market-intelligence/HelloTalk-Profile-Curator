@@ -304,6 +304,7 @@ final class InspectorViewModel: ObservableObject {
         automationPendingMomentKeys = []
         automationMomentFeedPage = 0
         let checkpoint = try? CollectionCheckpointStore.defaultStore().load()
+        automationMomentKeys = checkpoint?.momentVisitKeys ?? []
         automationCollectedUsername = checkpoint?.currentUsername
         automationLastFingerprint = nil
         automationWindowFrame = nil
@@ -482,6 +483,10 @@ final class InspectorViewModel: ObservableObject {
             automationPhase = .openMoments
 
         case .momentsFeed:
+            if automationPhase == .exitMoments {
+                try await finishMediaCollection(snapshot)
+                return
+            }
             if automationPhase == .openMoments { automationPhase = .scanMoments }
             try await scanVisibleMoments(snapshot)
 
@@ -492,9 +497,12 @@ final class InspectorViewModel: ObservableObject {
             guard automationPhase == .scanMoments else {
                 throw AutomationRuntimeError.unknownState("Unexpected Moment viewer")
             }
-            checkpointViewerPhoto()
             automationMomentKeys.formUnion(automationPendingMomentKeys)
             automationPendingMomentKeys = []
+            checkpointViewerPhoto()
+            if let profileID = currentCollectedProfile()?.id {
+                try? saveCollectionCheckpoint(profileID: profileID)
+            }
             try await dismissMomentViewer()
 
         case .profileOverflowMenu:
@@ -528,7 +536,7 @@ final class InspectorViewModel: ObservableObject {
         case .momentDetails:
             let back = fallbackBackAction(rationale: "Return from Moment details to the Moments feed")
             _ = try await performClick(back, context: .momentsFeed, expecting: .contentHashChanged(previous: snapshot.fingerprint))
-            automationPhase = .scanMoments
+            automationPhase = .exitMoments
 
         case .unknown:
             break
@@ -628,25 +636,31 @@ final class InspectorViewModel: ObservableObject {
             let keys = momentKeys(target)
             automationPendingMomentKeys = keys
             proposedMomentThumbnailTarget = target
-            _ = try await performClick(target.plannedAction, context: .momentsFeed, expecting: .viewerDetected)
+            do {
+                _ = try await performClick(target.plannedAction, context: .momentsFeed, expecting: .viewerDetected)
+            } catch {
+                guard observationSnapshot?.screen.kind == .momentDetails else { throw error }
+                automationMomentKeys.formUnion(keys)
+                automationPendingMomentKeys = []
+                recordEvent(.postcondition, summary: "recovered · rejected embedded post container")
+                let back = fallbackBackAction(rationale: "Return from an embedded Moment post opened by mistake")
+                let detailsFingerprint = observationSnapshot?.fingerprint ?? snapshot.fingerprint
+                _ = try await performClick(
+                    back,
+                    context: .momentsFeed,
+                    expecting: .contentHashChanged(previous: detailsFingerprint)
+                )
+                try await finishMediaCollection(observationSnapshot ?? snapshot)
+                return
+            }
             automationMomentKeys.formUnion(keys)
             automationNoProgressCount = 0
             return
         }
-
-        let changed = try await performVerticalScroll(
-            lines: -6,
-            context: .momentsFeed,
-            previousFingerprint: snapshot.fingerprint,
-            unchangedIsAllowed: true
-        )
-        if changed, observationSnapshot?.screen.kind == .momentsFeed {
-            automationMomentFeedPage += 1
-        }
-        automationNoProgressCount += 1
-        if automationNoProgressCount >= 5 {
-            try await finishMediaCollection(snapshot)
-        }
+        // The verified top gallery is the only collection surface. Scrolling into
+        // the timeline exposes post containers and overlapping copies of the same
+        // gallery row, so finish as soon as its unique thumbnails are exhausted.
+        try await finishMediaCollection(snapshot)
     }
 
     private func finishMediaCollection(_ snapshot: ObservationSnapshot) async throws {
@@ -1748,7 +1762,8 @@ final class InspectorViewModel: ObservableObject {
             currentProfileID: profileID,
             scannedPhotoCount: photos.count,
             retainedPhotoCount: photos.filter(\.retained).count,
-            perceptualHashes: Set(photos.map(\.perceptualHash))
+            perceptualHashes: Set(photos.map(\.perceptualHash)),
+            momentVisitKeys: Set(automationMomentKeys.filter { $0.hasPrefix("thumbnail|") })
         )
         try CollectionCheckpointStore.defaultStore().save(checkpoint)
     }
