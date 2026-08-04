@@ -48,7 +48,7 @@ Remaining supervised gate: validate calibrated PFP open/crop/close actions befor
 
 ## Phase 4 — Moments and no-face policy
 
-- [x] Moment viewer/gallery navigation geometry: discrete feed scroll, safe 3×3 thumbnail proposals, long downward dismiss, recognition, crop, checkpointing, limits, and finalization
+- [x] Moment viewer/gallery navigation geometry: discrete feed scroll, dynamic three-column thumbnail proposals, letterbox-safe downward dismiss, recognition, crop, checkpointing, limits, and finalization
 - [x] 20 scanned / 10 retained hard limits
 - [x] Perceptual-hash deduplication
 - [x] No-face tombstone finalization and media purge
@@ -83,4 +83,5 @@ Live endpoint verified: Windows Ollama serves `qwen3.5:9b` from localhost throug
 - [x] Native app bundle metadata and entitlements
 - [x] Hardened Runtime app/DMG packaging and optional notarization script
 - [x] Unknown-state, resize, persistence, offline-retry, and 500-action exclusion stress tests
-- [ ] Developer ID signing/notarization credentials and final supervised long-session regression
+- [x] Final supervised long-session regression across PFP, static Moment, Live Photo/video still-frame, letterboxed viewer, ads, and variable eight/nine-cell grids
+- [ ] Developer ID signing/notarization credentials

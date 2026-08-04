@@ -104,10 +104,10 @@ public struct MomentViewerDismissPlanner: Sendable {
         let x = mark.bounds.center.x
         return PlannedGesture(
             kind: .closeViewer,
-            start: NormalizedPoint(x: x, y: mark.bounds.minY + mark.bounds.height * 0.08),
-            end: NormalizedPoint(x: x, y: mark.bounds.maxY - mark.bounds.height * 0.08),
+            start: NormalizedPoint(x: x, y: mark.bounds.minY + mark.bounds.height * 0.045),
+            end: NormalizedPoint(x: x, y: mark.bounds.minY + mark.bounds.height * 0.955),
             requiredSafeRegion: mark.bounds,
-            rationale: "Dry-run long downward dismiss for the Moment viewer"
+            rationale: "Dry-run letterbox-safe downward dismiss for the Moment viewer"
         )
     }
 }

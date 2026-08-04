@@ -44,7 +44,7 @@ The current local build includes an Inspector, persistence layer, review dashboa
 - configure and test an optional Ollama/Qwen endpoint over Tailscale, with fixed JSON prompts, timeouts, bounded retry, and a persistent offline queue.
 - recognize PFP/Moment viewers, crop the photo region above known UI controls, ignore perceptual duplicates, enforce 20/10 counters, finalize the no-face rule, and enqueue only media-backed analysis jobs.
 - treat static posts, videos, and Live Photos uniformly as visible still-image sources: capture one stabilized Mac-rendered frame, store it as PNG, and never download or retain motion media.
-- traverse Moment galleries through a supervised, calibrated 3×3 thumbnail grid after a discrete vertical scroll, then use a long downward dismiss gesture; broken in-viewer horizontal swipes remain disabled.
+- traverse Moment galleries through supervised, calibrated three-column grid detection after a discrete vertical scroll, skip blank final-row cells, then use a letterbox-safe downward dismiss gesture; broken in-viewer horizontal swipes remain disabled.
 
 The production UI still defaults to dry-run and does not expose an unattended live-input switch. The core input executor exists behind explicit safety gates and a postcondition lock, but activation remains a supervised release gate. The experimental orange gallery path remains disabled after supervised mirroring validation showed that horizontal drag/scroll does not move the carousel.
 

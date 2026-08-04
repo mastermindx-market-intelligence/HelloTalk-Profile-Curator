@@ -121,8 +121,8 @@ final class InspectorViewModel: ObservableObject {
     }
 
     var momentThumbnailTargets: [MomentThumbnailTarget] {
-        guard screenClassification?.kind == .momentsFeed else { return [] }
-        return momentThumbnailDetector.targets(from: calibrationMarks)
+        guard screenClassification?.kind == .momentsFeed, let currentCGImage else { return [] }
+        return momentThumbnailDetector.targets(in: currentCGImage, from: calibrationMarks)
     }
 
     var activePreviewExclusions: [ExclusionZone] {
