@@ -1,3 +1,4 @@
+import CoreGraphics
 import XCTest
 @testable import ProfileCuratorCore
 
@@ -26,6 +27,41 @@ final class NavigationStateDetectorTests: XCTestCase {
         XCTAssertEqual(result.kind, .unknown)
         XCTAssertEqual(result.navigationState, .pausedUnknownState)
         XCTAssertEqual(result.confidence, 0)
+    }
+
+    func testHiddenChromeMomentViewerAllowsSmallDetectedFace() throws {
+        let width = 420
+        let height = 932
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let context = try XCTUnwrap(CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.setFillColor(CGColor(gray: 0.01, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(CGColor(red: 0.75, green: 0.48, blue: 0.38, alpha: 1))
+        context.fill(CGRect(x: 25, y: 250, width: 370, height: 430))
+        let image = try XCTUnwrap(context.makeImage())
+        let analysis = FixtureAnalysis(
+            imageWidth: width,
+            imageHeight: height,
+            text: [],
+            faces: [DetectedFace(
+                bounds: NormalizedRect(x: 0.46, y: 0.39, width: 0.10, height: 0.10),
+                captureQuality: 0.8,
+                hasLandmarks: true
+            )]
+        )
+
+        let result = NavigationStateDetector().classify(analysis, image: image)
+
+        XCTAssertEqual(result.kind, .momentViewer)
+        XCTAssertEqual(result.navigationState, .inspectMomentViewer)
     }
 
     func testFullScreenAIPromoIsAnInterstitialAd() {

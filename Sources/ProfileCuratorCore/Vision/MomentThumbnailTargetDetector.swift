@@ -64,11 +64,33 @@ public struct MomentThumbnailTargetDetector: Sendable {
               let pixels = MomentPixelBuffer(image: image) else {
             return []
         }
+        // Some profiles expose Moments as a timeline rather than a square
+        // gallery. The post header and caption occupy the upper part of the
+        // calibrated region; treating that chrome as row one opens Details.
+        // For a visible dated post, derive points below its header. If a long
+        // caption still intercepts one, the Details recovery skips that point
+        // and continues instead of ending the entire media pass.
+        let timelineTargets: [MomentThumbnailTarget]
+        if observations.isEmpty {
+            timelineTargets = []
+        } else {
+            timelineTargets = timelinePhotoTargets(
+               searchMark: searchMark,
+               observations: observations
+            )
+            let hasRelativePostTime = observations.contains {
+                $0.text.range(
+                    of: #"\b\d+\s+(?:minutes?|hours?|days?)\s+ago\b"#,
+                    options: [.regularExpression, .caseInsensitive]
+                ) != nil && $0.bounds.center.y > 0.50
+            }
+            if hasRelativePostTime, !timelineTargets.isEmpty { return timelineTargets }
+        }
         // Production captures must prove that the visible three-column geometry
         // belongs to the profile's top Moments gallery. Embedded photo mosaics in
         // timeline posts can have nearly identical pixel structure but open the
         // post container instead of a full-photo viewer.
-        guard observations.isEmpty || hasTopGalleryAnchors(observations) else { return [] }
+        guard observations.isEmpty || hasTopGalleryAnchors(observations) else { return timelineTargets }
 
         let columns = 3
         let left = max(0, Int((searchMark.bounds.minX * Double(pixels.width)).rounded()))
@@ -83,7 +105,7 @@ public struct MomentThumbnailTargetDetector: Sendable {
             pixels.height,
             Int((searchMark.bounds.maxY * Double(pixels.height)).rounded())
         )
-        guard searchWidth > 0, searchMaxY - searchMinY >= cellSize else { return [] }
+        guard searchWidth > 0, searchMaxY - searchMinY >= cellSize else { return timelineTargets }
 
         let runs = activeRuns(
             pixels: pixels,
@@ -102,7 +124,7 @@ public struct MomentThumbnailTargetDetector: Sendable {
             imageHeight: pixels.height,
             observations: observations
         ) else {
-            return []
+            return timelineTargets
         }
 
         let pitch = cellSize + gutter
@@ -162,6 +184,61 @@ public struct MomentThumbnailTargetDetector: Sendable {
                     safePhotoRegion: safe
                 ))
             }
+        }
+        return targets.isEmpty ? timelineTargets : targets
+    }
+
+    private func timelinePhotoTargets(
+        searchMark: CalibrationMark,
+        observations: [OCRObservation]
+    ) -> [MomentThumbnailTarget] {
+        let joined = observations.map(\.text).joined(separator: " · ")
+        let matcher = OCRAnchorMatcher()
+        let hasTabs = matcher.contains(anchor: "About Me", in: joined)
+            && matcher.contains(anchor: "Achievements", in: joined)
+        let hasEngagement = joined.range(
+            of: #"\b\d+\s*Like\b.*\b\d+\s*Comment\b"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+        guard hasTabs || hasEngagement else { return [] }
+
+        let tabBottom = observations.filter {
+            matcher.contains(anchor: "About Me", in: $0.text)
+                || matcher.contains(anchor: "Achievements", in: $0.text)
+        }.map(\.bounds.maxY).max()
+        let postTimePattern = #"\b(?:\d+\s+(?:minutes?|hours?|days?)\s+ago|today|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\b\d{1,4}[/.-]\d{1,2}(?:[/.-]\d{1,4})?\b"#
+        let postTimes = observations.filter { observation in
+            guard observation.text.range(
+                of: postTimePattern,
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil else { return false }
+            if let tabBottom { return observation.bounds.center.y > tabBottom + 0.04 }
+            return true
+        }.sorted { $0.bounds.center.y < $1.bounds.center.y }
+        guard !postTimes.isEmpty else { return [] }
+
+        var targets: [MomentThumbnailTarget] = []
+        for (index, postTime) in postTimes.enumerated() {
+            let point = NormalizedPoint(
+                x: searchMark.bounds.minX + min(0.18, searchMark.bounds.width * 0.30),
+                y: min(searchMark.bounds.maxY - 0.07, max(0.72, postTime.bounds.maxY + 0.12))
+            )
+            guard searchMark.bounds.contains(point),
+                  !isAdvertisingPoint(point, observations: observations, verticalTolerance: 0.14) else {
+                continue
+            }
+
+            let safe = NormalizedRect(
+                x: max(searchMark.bounds.minX, point.x - 0.045),
+                y: max(searchMark.bounds.minY, point.y - 0.04),
+                width: 0.09,
+                height: 0.08
+            )
+            targets.append(MomentThumbnailTarget(
+                index: 100 + index,
+                point: point,
+                safePhotoRegion: safe
+            ))
         }
         return targets
     }

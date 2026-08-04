@@ -93,7 +93,10 @@ public struct CollectionLimits: Codable, Hashable, Sendable {
         maximumRetainedPhotos: Int = 10,
         maximumRetainedFacePhotos: Int = 6,
         maximumRetainedContextPhotos: Int = 4,
-        minimumFaceAreaRatio: Double = 0.05,
+        // A clear face in a full-body Moment often occupies only 1–3% of the
+        // cropped photo. Keep rejecting tiny background faces, but do not call
+        // a real portrait "no face" solely because it is not a close-up.
+        minimumFaceAreaRatio: Double = 0.012,
         minimumFaceCaptureQuality: Double = 0.35
     ) {
         self.maximumScannedPhotos = min(20, max(1, maximumScannedPhotos))

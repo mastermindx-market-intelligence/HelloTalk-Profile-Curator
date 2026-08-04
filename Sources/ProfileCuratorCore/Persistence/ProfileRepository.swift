@@ -125,6 +125,10 @@ public struct ProfileDraft: Hashable, Sendable {
     public var gender: GenderBadgeHint
     public var mbti: MBTIType?
     public var location: NormalizedLocation?
+    /// When true, the caller has completed a badge-only location observation.
+    /// A nil location then means "verified no badge" and must clear stale OCR
+    /// data instead of inheriting a prior value.
+    public var replaceLocation: Bool
     public var bio: String?
     public var hobbies: [String]
     public var education: String?
@@ -139,6 +143,7 @@ public struct ProfileDraft: Hashable, Sendable {
         gender: GenderBadgeHint = .unknown,
         mbti: MBTIType? = nil,
         location: NormalizedLocation? = nil,
+        replaceLocation: Bool = false,
         bio: String? = nil,
         hobbies: [String] = [],
         education: String? = nil,
@@ -152,6 +157,7 @@ public struct ProfileDraft: Hashable, Sendable {
         self.gender = gender
         self.mbti = mbti
         self.location = location
+        self.replaceLocation = replaceLocation
         self.bio = bio
         self.hobbies = hobbies
         self.education = education
@@ -392,12 +398,12 @@ public final class ProfileRepository: @unchecked Sendable {
                 gender: draft.gender == .unknown ? existing?.gender : draft.gender.rawValue,
                 mbti: draft.mbti?.rawValue ?? existing?.mbti,
                 mbtiGroup: draft.mbti?.group?.rawValue ?? existing?.mbtiGroup,
-                locationRaw: draft.location?.rawText ?? existing?.locationRaw,
-                cityNormalized: draft.location?.city ?? existing?.cityNormalized,
-                provinceNormalized: draft.location?.province ?? existing?.provinceNormalized,
-                countryNormalized: draft.location?.country ?? existing?.countryNormalized,
-                locationTier: draft.location?.tier ?? existing?.locationTier,
-                locationScore: draft.location?.score ?? existing?.locationScore,
+                locationRaw: draft.replaceLocation ? draft.location?.rawText : (draft.location?.rawText ?? existing?.locationRaw),
+                cityNormalized: draft.replaceLocation ? draft.location?.city : (draft.location?.city ?? existing?.cityNormalized),
+                provinceNormalized: draft.replaceLocation ? draft.location?.province : (draft.location?.province ?? existing?.provinceNormalized),
+                countryNormalized: draft.replaceLocation ? draft.location?.country : (draft.location?.country ?? existing?.countryNormalized),
+                locationTier: draft.replaceLocation ? draft.location?.tier : (draft.location?.tier ?? existing?.locationTier),
+                locationScore: draft.replaceLocation ? draft.location?.score : (draft.location?.score ?? existing?.locationScore),
                 bio: mergedBio,
                 hobbiesJSON: Self.encodeHobbies(mergedHobbies),
                 education: mergedEducation,

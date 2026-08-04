@@ -5,6 +5,17 @@ public enum InputCommand: Hashable, Sendable {
     case click(NormalizedPoint)
     case drag(start: NormalizedPoint, end: NormalizedPoint)
     case verticalScroll(lines: Int, at: NormalizedPoint)
+    case keyPress(KeyboardInputKey)
+}
+
+public enum KeyboardInputKey: Hashable, Sendable {
+    case rightArrow
+
+    fileprivate var virtualKeyCode: CGKeyCode {
+        switch self {
+        case .rightArrow: 124
+        }
+    }
 }
 
 public protocol InputDriving: Sendable {
@@ -106,6 +117,14 @@ public actor CGEventInputDriver: InputDriving {
             }
             event.location = global
             event.post(tap: .cghidEventTap)
+        case .keyPress(let key):
+            guard let down = CGEvent(keyboardEventSource: nil, virtualKey: key.virtualKeyCode, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: nil, virtualKey: key.virtualKeyCode, keyDown: false) else {
+                throw InputDriverError.eventCreationFailed
+            }
+            down.post(tap: .cghidEventTap)
+            try await Task.sleep(for: .milliseconds(45))
+            up.post(tap: .cghidEventTap)
         }
     }
 
@@ -209,6 +228,37 @@ public actor SafeInputExecutor {
         try await driver.emit(.verticalScroll(lines: lines, at: action.point), in: windowFrame)
         awaitingPostcondition = true
         return decision
+    }
+
+    public func executeViewerKeyPress(
+        key: KeyboardInputKey,
+        windowFrame: CGRect,
+        viewerConfirmed: Bool,
+        emergencyStopActive: Bool,
+        sessionPauseReason: String?,
+        liveInputEnabled: Bool
+    ) async throws -> ActionSafetyDecision {
+        if awaitingPostcondition {
+            return ActionSafetyDecision(
+                isAllowed: false,
+                rejection: .sessionPaused("Previous action postcondition is unresolved")
+            )
+        }
+        guard viewerConfirmed else {
+            return ActionSafetyDecision(isAllowed: false, rejection: .outsideRequiredSafeRegion)
+        }
+        if emergencyStopActive {
+            return ActionSafetyDecision(isAllowed: false, rejection: .emergencyStopActive)
+        }
+        if let sessionPauseReason {
+            return ActionSafetyDecision(isAllowed: false, rejection: .sessionPaused(sessionPauseReason))
+        }
+        guard liveInputEnabled else {
+            return ActionSafetyDecision(isAllowed: false, rejection: .dryRunRequired)
+        }
+        try await driver.emit(.keyPress(key), in: windowFrame)
+        awaitingPostcondition = true
+        return ActionSafetyDecision(isAllowed: true, rejection: nil)
     }
 }
 

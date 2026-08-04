@@ -221,7 +221,10 @@ struct MomentViewerVisualDetector: Sendable {
         return topDark >= 0.72
             && bottomDark >= 0.72
             && centerContent >= 0.18
-            && (hasViewerChrome || hasLargeCentralFace || (paginationLight < 0.0008 && faces.isEmpty))
+            // HelloTalk hides every control after a few seconds. A small face
+            // can still be present in the opened photo, so requiring either a
+            // large face or no faces rejects a real hidden-chrome viewer.
+            && (hasViewerChrome || hasLargeCentralFace || paginationLight < 0.0008)
     }
 }
 

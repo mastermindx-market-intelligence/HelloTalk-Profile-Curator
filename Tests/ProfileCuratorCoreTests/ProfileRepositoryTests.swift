@@ -25,6 +25,28 @@ final class ProfileRepositoryTests: XCTestCase {
         XCTAssertEqual(try context.repository.page(ProfileQuery()).totalCount, 1)
     }
 
+    func testVerifiedMissingLocationClearsStaleMapDerivedCity() throws {
+        let context = try temporaryRepository()
+        let first = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@map-label-bug",
+            location: LocationNormalizer().normalize("Shanghai")
+        ))
+        XCTAssertEqual(first.cityNormalized, "Shanghai")
+
+        let corrected = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@map-label-bug",
+            location: nil,
+            replaceLocation: true
+        ))
+
+        XCTAssertNil(corrected.locationRaw)
+        XCTAssertNil(corrected.cityNormalized)
+        XCTAssertNil(corrected.provinceNormalized)
+        XCTAssertNil(corrected.countryNormalized)
+        XCTAssertNil(corrected.locationTier)
+        XCTAssertNil(corrected.locationScore)
+    }
+
     func testComposedFiltersAndPaginationRunInDatabase() throws {
         let context = try temporaryRepository()
         for index in 0..<25 {

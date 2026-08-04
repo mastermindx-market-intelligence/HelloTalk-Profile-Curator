@@ -1,6 +1,39 @@
 import CoreGraphics
 import Foundation
 
+public struct MomentGalleryProgress: Equatable, Sendable {
+    public let current: Int
+    public let total: Int
+
+    public init(current: Int, total: Int) {
+        self.current = current
+        self.total = total
+    }
+}
+
+public struct MomentGalleryCounterParser: Sendable {
+    private static let expression = try! NSRegularExpression(
+        pattern: #"\b(\d{1,2})\s*/\s*(\d{1,2})\b"#
+    )
+
+    public init() {}
+
+    public func progress(in observations: [OCRObservation]) -> MomentGalleryProgress? {
+        for observation in observations where observation.confidence >= 0.45 {
+            let text = observation.text
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            guard let match = Self.expression.firstMatch(in: text, range: range),
+                  let currentRange = Range(match.range(at: 1), in: text),
+                  let totalRange = Range(match.range(at: 2), in: text),
+                  let current = Int(text[currentRange]),
+                  let total = Int(text[totalRange]),
+                  total >= 2, current >= 1, current <= total else { continue }
+            return MomentGalleryProgress(current: current, total: total)
+        }
+        return nil
+    }
+}
+
 public struct PhotoExtractionRegion: Hashable, Sendable {
     public let bounds: NormalizedRect
     public let confidence: Double

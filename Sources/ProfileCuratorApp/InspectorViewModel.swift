@@ -92,7 +92,6 @@ final class InspectorViewModel: ObservableObject {
 
     private let analyzer = VisionFixtureAnalyzer()
     private let mbtiParser = MBTIParser()
-    private let locationNormalizer = LocationNormalizer()
     private let profileHeaderParser = ProfileHeaderParser()
     private let profileMetadataParser = ProfileMetadataParser()
     private let recommendationAgeParser = RecommendationAgeParser()
@@ -105,6 +104,7 @@ final class InspectorViewModel: ObservableObject {
     private let discoveryPolicy = DiscoveryPolicy.observedDefault
     private let visibleTargetDetector = VisibleRecommendationTargetDetector()
     private let momentThumbnailDetector = MomentThumbnailTargetDetector()
+    private let momentGalleryCounterParser = MomentGalleryCounterParser()
     private let momentDismissPlanner = MomentViewerDismissPlanner()
     private let socialControlDetector = SocialControlExclusionDetector()
     private let profileInteractionSafety = ProfileInteractionSafety()
@@ -129,6 +129,8 @@ final class InspectorViewModel: ObservableObject {
     private var automationMomentKeys: Set<String> = []
     private var automationPendingMomentKeys: Set<String> = []
     private var automationMomentFeedPage = 0
+    private var automationViewerChromeProbed = false
+    private var automationViewerIndices: Set<Int> = []
     private var automationCollectedUsername: String?
     private var automationLastFingerprint: String?
     private var automationWindowFrame: CGRect?
@@ -158,8 +160,7 @@ final class InspectorViewModel: ObservableObject {
     }
 
     var detectedLocation: NormalizedLocation? {
-        guard let analysis else { return nil }
-        return locationNormalizer.normalize(analysis.text.map(\.text).joined(separator: " · "))
+        temporalLocation?.location
     }
 
     var detectedProfileAge: ProfileAgeMatch? {
@@ -303,6 +304,8 @@ final class InspectorViewModel: ObservableObject {
         automationMomentKeys = []
         automationPendingMomentKeys = []
         automationMomentFeedPage = 0
+        automationViewerChromeProbed = false
+        automationViewerIndices = []
         let checkpoint = try? CollectionCheckpointStore.defaultStore().load()
         automationMomentKeys = checkpoint?.momentVisitKeys ?? []
         automationCollectedUsername = checkpoint?.currentUsername
@@ -503,6 +506,27 @@ final class InspectorViewModel: ObservableObject {
             if let profileID = currentCollectedProfile()?.id {
                 try? saveCollectionCheckpoint(profileID: profileID)
             }
+            if let progress = momentGalleryCounterParser.progress(in: analysis?.text ?? []) {
+                let isNewIndex = automationViewerIndices.insert(progress.current).inserted
+                if progress.current < progress.total, isNewIndex {
+                    automationViewerChromeProbed = false
+                    try await advanceMomentViewerPhoto(snapshot)
+                    return
+                }
+            } else if !automationViewerChromeProbed {
+                automationViewerChromeProbed = true
+                let safe = NormalizedRect(x: 0.35, y: 0.10, width: 0.30, height: 0.10)
+                let reveal = PlannedAction(
+                    kind: .showViewerChrome,
+                    point: safe.center,
+                    requiredSafeRegion: safe,
+                    rationale: "Reveal Moment viewer counter without touching social controls"
+                )
+                _ = try await performClick(reveal, context: .momentViewer, expecting: .viewerDetected)
+                return
+            }
+            automationViewerChromeProbed = false
+            automationViewerIndices = []
             try await dismissMomentViewer()
 
         case .profileOverflowMenu:
@@ -536,7 +560,7 @@ final class InspectorViewModel: ObservableObject {
         case .momentDetails:
             let back = fallbackBackAction(rationale: "Return from Moment details to the Moments feed")
             _ = try await performClick(back, context: .momentsFeed, expecting: .contentHashChanged(previous: snapshot.fingerprint))
-            automationPhase = .exitMoments
+            automationPhase = .scanMoments
 
         case .unknown:
             break
@@ -572,6 +596,9 @@ final class InspectorViewModel: ObservableObject {
 
         default:
             automationPhase = .scanProfile
+            if !profileAccumulator.locationObservationCompleted {
+                try await captureAutomaticLocationBurst()
+            }
             if !automationAboutMeSelected {
                 guard let observations = analysis?.text,
                       profileInteractionSafety.tabAction(named: "About Me", in: observations) != nil else {
@@ -623,6 +650,30 @@ final class InspectorViewModel: ObservableObject {
         }
     }
 
+    /// The map itself contains many city labels, so location is observed only
+    /// from the rotating city/nearby badge over several frames. Completing this
+    /// burst with no city is meaningful evidence: the profile has no readable
+    /// location badge and any stale map-derived location should be cleared.
+    private func captureAutomaticLocationBurst() async throws {
+        guard let selectedWindowID else { throw AutomationRuntimeError.mirroringWindowMissing }
+        automationStatus = "Reading rotating location badge…"
+        let frames = try await WindowCaptureService().captureBurst(
+            windowID: selectedWindowID,
+            frameCount: 4,
+            intervalMilliseconds: 600
+        )
+        for frame in frames { try validateWindowGeometry(frame) }
+        let analyses = try frames.map { try analyzer.analyze($0.image) }
+        let resolution = rotatingLocationBadgeParser.resolve(frames: analyses.map(\.text))
+        temporalLocation = resolution
+        profileAccumulator.completeLocationObservation(resolution.location)
+        if let location = resolution.location {
+            recordEvent(.observation, summary: "Location badge resolved · \(location.city ?? location.country ?? "unknown")")
+        } else {
+            recordEvent(.observation, summary: "Location badge absent · ignored \(resolution.nearbyCountsIgnored.count) nearby-count frame(s) and all map labels")
+        }
+    }
+
     private func scanVisibleMoments(_ snapshot: ObservationSnapshot) async throws {
         if scannedMomentCount() >= CollectionLimits.hardenedDefault.maximumScannedPhotos {
             try await finishMediaCollection(snapshot)
@@ -642,7 +693,8 @@ final class InspectorViewModel: ObservableObject {
                 guard observationSnapshot?.screen.kind == .momentDetails else { throw error }
                 automationMomentKeys.formUnion(keys)
                 automationPendingMomentKeys = []
-                recordEvent(.postcondition, summary: "recovered · rejected embedded post container")
+                automationNoProgressCount += 1
+                recordEvent(.postcondition, summary: "recovered · skipped non-photo area inside Moment post")
                 let back = fallbackBackAction(rationale: "Return from an embedded Moment post opened by mistake")
                 let detailsFingerprint = observationSnapshot?.fingerprint ?? snapshot.fingerprint
                 _ = try await performClick(
@@ -650,7 +702,7 @@ final class InspectorViewModel: ObservableObject {
                     context: .momentsFeed,
                     expecting: .contentHashChanged(previous: detailsFingerprint)
                 )
-                try await finishMediaCollection(observationSnapshot ?? snapshot)
+                automationPhase = .scanMoments
                 return
             }
             automationMomentKeys.formUnion(keys)
@@ -975,6 +1027,34 @@ final class InspectorViewModel: ObservableObject {
         throw AutomationRuntimeError.postconditionFailed("Moment viewer did not dismiss after three distinct calibrated attempts")
     }
 
+    private func advanceMomentViewerPhoto(_ snapshot: ObservationSnapshot) async throws {
+        guard let automationWindowFrame else { throw AutomationRuntimeError.mirroringWindowMissing }
+        try await focusMirroringApp()
+        sessionState.recordProposal(policy: sessionPolicy)
+        let decision = try await liveInputExecutor.executeViewerKeyPress(
+            key: .rightArrow,
+            windowFrame: automationWindowFrame,
+            viewerConfirmed: snapshot.screen.kind == .momentViewer,
+            emergencyStopActive: sessionState.pauseReason == .emergencyStop,
+            sessionPauseReason: sessionState.pauseReason?.summary,
+            liveInputEnabled: true
+        )
+        guard decision.isAllowed else {
+            await liveInputExecutor.resolvePostcondition(passed: false)
+            throw AutomationRuntimeError.actionBlocked(decision.rejection.map(actionRejectionDescription) ?? "viewer keyboard navigation blocked")
+        }
+        automationActionCount += 1
+        recordEvent(.safetyDecision, summary: "Executed nextViewerPhoto · keyboard Right Arrow inside verified Moment viewer")
+        try await Task.sleep(for: .milliseconds(850))
+        let next = try await captureAutomationFrame()
+        let passed = next.screen.kind == .momentViewer
+        await liveInputExecutor.resolvePostcondition(passed: passed)
+        guard passed else {
+            throw AutomationRuntimeError.postconditionFailed("Right Arrow left the verified Moment viewer")
+        }
+        recordEvent(.postcondition, summary: "passed · next Moment photo remained inside verified viewer")
+    }
+
     private func momentKeys(_ target: MomentThumbnailTarget) -> Set<String> {
         let thumbnailHash: String?
         if let image = currentCGImage,
@@ -1021,6 +1101,8 @@ final class InspectorViewModel: ObservableObject {
         automationMomentKeys = []
         automationPendingMomentKeys = []
         automationMomentFeedPage = 0
+        automationViewerChromeProbed = false
+        automationViewerIndices = []
     }
 
     private func startQwenWorkerIfNeeded() {
@@ -1179,6 +1261,7 @@ final class InspectorViewModel: ObservableObject {
                     capturedAt: lastFrame.capturedAt
                 )
                 temporalLocation = rotatingLocationBadgeParser.resolve(frames: analyses.map(\.text))
+                profileAccumulator.completeLocationObservation(temporalLocation?.location)
 
                 if let city = temporalLocation?.location?.city {
                     windowSearchStatus = "Resolved \(city) across \(frames.count) frames"
@@ -1367,6 +1450,7 @@ final class InspectorViewModel: ObservableObject {
                 gender: profileAccumulator.gender,
                 mbti: profileAccumulator.mbti,
                 location: profileAccumulator.location,
+                replaceLocation: profileAccumulator.locationObservationCompleted,
                 bio: profileAccumulator.bio,
                 hobbies: profileAccumulator.hobbies,
                 education: profileAccumulator.education,
@@ -1714,7 +1798,7 @@ final class InspectorViewModel: ObservableObject {
                 genderBadgeClassifier.classify(image: cgImage, ageMatch: $0).hint
             },
             mbti: mbtiParser.matches(in: result.text).first?.type,
-            location: locationNormalizer.normalize(result.text.map(\.text).joined(separator: " · ")),
+            location: temporalLocation?.location,
             metadata: profileMetadata
         )
 
@@ -1875,6 +1959,7 @@ private struct ProfileObservationAccumulator {
     var gender: GenderBadgeHint = .unknown
     var mbti: MBTIType?
     var location: NormalizedLocation?
+    var locationObservationCompleted = false
     var bio: String?
     var hobbies: [String] = []
     var education: String?
@@ -1912,7 +1997,7 @@ private struct ProfileObservationAccumulator {
         age: ProfileAgeMatch?,
         gender: GenderBadgeHint?,
         mbti: MBTIType?,
-        location: NormalizedLocation,
+        location: NormalizedLocation?,
         metadata: ParsedProfileMetadata
     ) {
         if let observed = snapshot.username, observed != username {
@@ -1922,7 +2007,10 @@ private struct ProfileObservationAccumulator {
         if let age { self.age = age.age }
         if let gender, gender != .unknown { self.gender = gender }
         if let mbti { self.mbti = mbti }
-        if location.city != nil || location.province != nil || location.country != nil { self.location = location }
+        if let location,
+           location.city != nil || location.province != nil || location.country != nil {
+            self.location = location
+        }
         if let incomingBio = metadata.bio?.trimmingCharacters(in: .whitespacesAndNewlines),
            !incomingBio.isEmpty,
            incomingBio.count >= (bio?.count ?? 0) {
@@ -1943,5 +2031,10 @@ private struct ProfileObservationAccumulator {
         if let parsedDisplayName = ProfileDisplayNameParser().displayName(in: analysis.text) {
             displayName = parsedDisplayName
         }
+    }
+
+    mutating func completeLocationObservation(_ location: NormalizedLocation?) {
+        self.location = location
+        locationObservationCompleted = true
     }
 }

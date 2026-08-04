@@ -163,6 +163,25 @@ final class CollectionPolicyTests: XCTestCase {
         XCTAssertEqual(policy.decision(group: .primary, candidates: noFaces, feedExhausted: false), .retainForReview)
     }
 
+    func testFullBodyMomentFaceIsUsableButTinyBackgroundFaceIsNot() {
+        let limits = CollectionLimits.hardenedDefault
+        let fullBodyPortrait = MediaCandidate(
+            perceptualHash: "portrait",
+            faceCount: 1,
+            largestFaceRatio: 0.018,
+            captureQuality: 0.78
+        )
+        let tinyBackgroundFace = MediaCandidate(
+            perceptualHash: "background",
+            faceCount: 1,
+            largestFaceRatio: 0.004,
+            captureQuality: 0.90
+        )
+
+        XCTAssertTrue(fullBodyPortrait.isUsableFace(limits: limits))
+        XCTAssertFalse(tinyBackgroundFace.isUsableFace(limits: limits))
+    }
+
     func testScoringUsesSeparateWeightsAndExplicitConfidenceAdjustment() {
         let components = ScoreComponents(face: 80, lifestyle: 60, location: 100, completeness: 50, confidence: 0.5)
         let primary = ScoringEngine().score(group: .primary, components: components)

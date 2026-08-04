@@ -10,6 +10,8 @@ public enum PlannedActionKind: String, Codable, Sendable {
     case verticalScroll
     case horizontalCarousel
     case back
+    case showViewerChrome
+    case nextViewerPhoto
 }
 
 public struct ExclusionZone: Identifiable, Codable, Hashable, Sendable {

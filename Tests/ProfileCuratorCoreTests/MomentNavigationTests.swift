@@ -4,6 +4,33 @@ import XCTest
 @testable import ProfileCuratorCore
 
 final class MomentNavigationTests: XCTestCase {
+    func testOptionalLiveSinglePhotoPostTargetsThePhotoFaceInsteadOfPostChrome() throws {
+        guard let path = ProcessInfo.processInfo.environment["HELLOTALK_SINGLE_PHOTO_POST"] else {
+            throw XCTSkip("No live single-photo post fixture supplied")
+        }
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let analysis = try VisionFixtureAnalyzer().analyze(image)
+        let mark = CalibrationMark(
+            context: .momentsFeed,
+            kind: .safeMomentThumbnailGrid,
+            bounds: NormalizedRect(x: 0.057, y: 0.20, width: 0.78, height: 0.69),
+            confirmed: true
+        )
+
+        let targets = MomentThumbnailTargetDetector().targets(
+            in: image,
+            from: [mark],
+            observations: analysis.text,
+            faces: analysis.faces
+        )
+
+        XCTAssertEqual(targets.count, 1, "Faces: \(analysis.faces); OCR: \(analysis.text.map { ($0.text, $0.bounds) }); targets: \(targets)")
+        guard let target = targets.first else { return }
+        XCTAssertGreaterThan(target.point.y, 0.70)
+        XCTAssertLessThan(target.point.x, 0.45)
+    }
+
     func testOptionalLiveMultiPhotoPostFindsPhotosButRejectsAdRows() throws {
         guard let path = ProcessInfo.processInfo.environment["HELLOTALK_MULTI_PHOTO_POST"] else {
             throw XCTSkip("No live multi-photo post fixture supplied")
@@ -250,6 +277,30 @@ final class MomentNavigationTests: XCTestCase {
         )
     }
 
+    func testOlderDatedTimelineTargetsPhotoWithoutTopProfileTabs() throws {
+        let mark = CalibrationMark(
+            context: .momentsFeed,
+            kind: .safeMomentThumbnailGrid,
+            bounds: NormalizedRect(x: 0.057, y: 0.20, width: 0.78, height: 0.69),
+            confirmed: true
+        )
+        let image = try makeTimelinePostImage()
+        let observations = [
+            OCRObservation(text: "12 Like 3 Comment", confidence: 0.98, bounds: NormalizedRect(x: 0.06, y: 0.50, width: 0.28, height: 0.03)),
+            OCRObservation(text: "Saturday 21:44", confidence: 0.98, bounds: NormalizedRect(x: 0.70, y: 0.60, width: 0.24, height: 0.03))
+        ]
+
+        let targets = MomentThumbnailTargetDetector().targets(
+            in: image,
+            from: [mark],
+            observations: observations
+        )
+
+        XCTAssertEqual(targets.count, 1)
+        XCTAssertEqual(targets.first?.index, 100)
+        XCTAssertGreaterThan(targets.first?.point.y ?? 0, 0.72)
+    }
+
     func testLaterAlignedRowsBeatSingleThreeColumnDistractor() throws {
         let mark = CalibrationMark(
             context: .momentsFeed,
@@ -335,6 +386,48 @@ final class MomentNavigationTests: XCTestCase {
                 && mark.bounds.contains($0.end)
                 && $0.end.y - $0.start.y > 0.54
         })
+    }
+
+    func testMomentGalleryCounterParsesOnlyBoundedMultiPhotoProgress() {
+        let parser = MomentGalleryCounterParser()
+        let progress = parser.progress(in: [
+            OCRObservation(text: "2 / 5", confidence: 0.96, bounds: NormalizedRect(x: 0.44, y: 0.08, width: 0.12, height: 0.03))
+        ])
+
+        XCTAssertEqual(progress, MomentGalleryProgress(current: 2, total: 5))
+        XCTAssertNil(parser.progress(in: [
+            OCRObservation(text: "6 / 5", confidence: 0.96, bounds: NormalizedRect(x: 0.44, y: 0.08, width: 0.12, height: 0.03))
+        ]))
+    }
+
+    func testViewerRightArrowRequiresVerifiedViewerAndLiveInput() async throws {
+        let driver = RecordingMomentDriver()
+        let executor = SafeInputExecutor(driver: driver)
+        let frame = CGRect(x: 0, y: 0, width: 420, height: 932)
+
+        let blocked = try await executor.executeViewerKeyPress(
+            key: .rightArrow,
+            windowFrame: frame,
+            viewerConfirmed: false,
+            emergencyStopActive: false,
+            sessionPauseReason: nil,
+            liveInputEnabled: true
+        )
+        XCTAssertFalse(blocked.isAllowed)
+        let blockedCommands = await driver.commands
+        XCTAssertEqual(blockedCommands, [])
+
+        let allowed = try await executor.executeViewerKeyPress(
+            key: .rightArrow,
+            windowFrame: frame,
+            viewerConfirmed: true,
+            emergencyStopActive: false,
+            sessionPauseReason: nil,
+            liveInputEnabled: true
+        )
+        XCTAssertTrue(allowed.isAllowed)
+        let allowedCommands = await driver.commands
+        XCTAssertEqual(allowedCommands, [.keyPress(.rightArrow)])
     }
 
     func testInterstitialAdDismissUsesDedicatedTopRightCloseRegion() throws {
@@ -528,6 +621,37 @@ final class MomentNavigationTests: XCTestCase {
                     width: cell,
                     height: cell
                 ))
+            }
+        }
+        return try XCTUnwrap(context.makeImage())
+    }
+
+    private func makeTimelinePostImage() throws -> CGImage {
+        let width = 420
+        let height = 932
+        let context = try XCTUnwrap(CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: 1, y: -1)
+        context.setFillColor(CGColor(gray: 0.04, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        for row in 0..<88 {
+            for column in 0..<34 {
+                let bright = (row + column).isMultiple(of: 2)
+                context.setFillColor(CGColor(
+                    red: bright ? 0.88 : 0.24,
+                    green: bright ? 0.64 : 0.34,
+                    blue: bright ? 0.48 : 0.72,
+                    alpha: 1
+                ))
+                context.fill(CGRect(x: 24 + column * 10, y: 150 + row * 8, width: 10, height: 8))
             }
         }
         return try XCTUnwrap(context.makeImage())
