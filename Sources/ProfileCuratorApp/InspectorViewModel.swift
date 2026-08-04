@@ -555,7 +555,7 @@ final class InspectorViewModel: ObservableObject {
                     expecting: .contentHashChanged(previous: snapshot.fingerprint)
                 )
                 automationPhase = .acquireProfileTop
-                automationReturnToTopScrollsRemaining = 4
+                automationReturnToTopScrollsRemaining = ProfileInteractionSafety.acquireProfileTopScrollPasses
                 automationScrollAttempts = 0
                 return
             }
@@ -1176,7 +1176,7 @@ final class InspectorViewModel: ObservableObject {
         prepareForNewProfile()
         automationPhase = .acquireProfileTop
         automationScrollAttempts = 0
-        automationReturnToTopScrollsRemaining = 4
+        automationReturnToTopScrollsRemaining = ProfileInteractionSafety.acquireProfileTopScrollPasses
         try await continueAcquireProfileTop(previousFingerprint: next.fingerprint)
     }
 

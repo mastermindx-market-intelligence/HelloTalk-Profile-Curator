@@ -2,7 +2,12 @@ import Foundation
 
 public struct ProfileInteractionSafety: Sendable {
     public static let acquireProfileTopScrollLines = 36
-    public static let maximumAcquireProfileTopScrollAttempts = 3
+    /// Suggested-profile navigation can inherit a deep scroll offset from the
+    /// completed profile. Keep the required pass count and safety ceiling tied
+    /// to the same value so acquisition can never be configured to fail before
+    /// its own bounded recovery sequence finishes.
+    public static let acquireProfileTopScrollPasses = 4
+    public static let maximumAcquireProfileTopScrollAttempts = acquireProfileTopScrollPasses
 
     public init() {}
 
