@@ -202,9 +202,18 @@ public actor AnalysisQueueProcessor {
                 confidence: confidence
             )
             if let group = profile.typedGroup {
-                overall = ScoringEngine().score(group: group, components: components).overall
+                overall = ScoringEngine().score(
+                    group: group,
+                    components: components,
+                    locationMissing: profile.isLocationMissing
+                ).overall
             } else if profile.isPreferredLocationNoMBTI {
                 overall = ScoringEngine().scorePreferredLocationNoMBTI(components: components).overall
+            } else if profile.isUnknownLocationNoMBTI {
+                overall = ScoringEngine().scorePreferredLocationNoMBTI(
+                    components: components,
+                    locationMissing: true
+                ).overall
             } else {
                 overall = profile.overallScore
             }

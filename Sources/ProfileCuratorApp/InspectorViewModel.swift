@@ -567,7 +567,7 @@ final class InspectorViewModel: ObservableObject {
 
         default:
             switch profileEligibilityDecision {
-            case .collectPrimary, .collectSecondary, .collectPreferredLocationNoMBTI:
+            case .collectPrimary, .collectSecondary, .collectPreferredLocationNoMBTI, .collectUnknownLocationNoMBTI:
                 checkpointVerifiedProfile()
                 guard collectedProfileID != nil, let username = profileAccumulator.username else {
                     throw AutomationRuntimeError.unknownState(collectionStatus)
@@ -1338,8 +1338,8 @@ final class InspectorViewModel: ObservableObject {
             return
         }
         guard let retentionGroup = profile.typedGroup
-                ?? (profile.isPreferredLocationNoMBTI ? MBTIGroup.secondary : nil) else {
-            collectionStatus = "Profile is neither target MBTI nor a preferred-location exception"
+                ?? (profile.isPreferredLocationNoMBTI || profile.isUnknownLocationNoMBTI ? MBTIGroup.secondary : nil) else {
+            collectionStatus = "Profile is neither target MBTI nor an allowed missing-data exception"
             return
         }
         do {

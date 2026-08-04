@@ -203,18 +203,22 @@ public struct VisibleRecommendationTargetRanker: Sendable {
 
     public func ranked(_ targets: [VisibleRecommendationTarget]) -> [VisibleRecommendationTarget] {
         targets.sorted { lhs, rhs in
-            let lhsEligible = lhs.displayedAge.map { (18...21).contains($0) } == true
-            let rhsEligible = rhs.displayedAge.map { (18...21).contains($0) } == true
-            if lhsEligible != rhsEligible { return lhsEligible }
-            if lhsEligible, lhs.displayedAge != rhs.displayedAge {
+            let lhsPriority = agePriority(lhs.displayedAge)
+            let rhsPriority = agePriority(rhs.displayedAge)
+            if lhsPriority != rhsPriority { return lhsPriority < rhsPriority }
+            if lhsPriority <= 1, lhs.displayedAge != rhs.displayedAge {
                 return (lhs.displayedAge ?? Int.max) < (rhs.displayedAge ?? Int.max)
             }
-            let lhsKnown = lhs.displayedAge != nil
-            let rhsKnown = rhs.displayedAge != nil
-            if lhsKnown != rhsKnown { return !lhsKnown }
             if lhs.confidence != rhs.confidence { return lhs.confidence > rhs.confidence }
             return lhs.photoPoint.x < rhs.photoPoint.x
         }
+    }
+
+    private func agePriority(_ age: Int?) -> Int {
+        guard let age else { return 2 }
+        if ProfileEligibilityPolicy.adultTargetAges.contains(age) { return 0 }
+        if ProfileEligibilityPolicy.primaryMBTIAgeException.contains(age) { return 1 }
+        return 3
     }
 }
 

@@ -25,6 +25,17 @@ final class ProfileInteractionSafetyTests: XCTestCase {
         XCTAssertLessThan(try XCTUnwrap(action.requiredSafeRegion).height, 0.08)
     }
 
+    func testMomentsTabAcceptsDynamicPostCountButRejectsOtherMomentsText() throws {
+        let countedTab = observation("Moments 6", x: 0.37, y: 0.46, width: 0.19)
+        let unrelated = observation("My favorite moments today", x: 0.08, y: 0.72, width: 0.42)
+
+        let action = try XCTUnwrap(safety.tabAction(named: "Moments", in: [unrelated, countedTab]))
+
+        XCTAssertEqual(action.kind, .selectMoments)
+        XCTAssertEqual(action.point, countedTab.bounds.center)
+        XCTAssertNil(safety.tabAction(named: "Moments", in: [unrelated]))
+    }
+
     func testPopupDetectionRequiresMultipleSpecificAnchors() {
         XCTAssertTrue(safety.isLearningStatsPopup([
             observation("Total learning points: 935", x: 0.15, y: 0.25, width: 0.5),

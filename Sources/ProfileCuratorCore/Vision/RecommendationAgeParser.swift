@@ -29,7 +29,10 @@ public struct RecommendationAgeParser: Sendable {
     public init() {}
 
     public func candidates(in observations: [OCRObservation], minimumConfidence: Float = 0.72) -> [RecommendationAgeCandidate] {
-        allAges(in: observations, minimumConfidence: minimumConfidence).filter { (18...21).contains($0.age) }
+        allAges(in: observations, minimumConfidence: minimumConfidence).filter {
+            ProfileEligibilityPolicy.adultTargetAges.contains($0.age)
+                || ProfileEligibilityPolicy.primaryMBTIAgeException.contains($0.age)
+        }
     }
 
     public func allAges(in observations: [OCRObservation], minimumConfidence: Float = 0.72) -> [RecommendationAgeCandidate] {

@@ -6,7 +6,7 @@ public struct ProfileInteractionSafety: Sendable {
     public func tabAction(named tab: String, in observations: [OCRObservation]) -> PlannedAction? {
         let normalizedTab = normalize(tab)
         guard let anchor = observations
-            .filter({ $0.confidence >= 0.65 && normalize($0.text) == normalizedTab })
+            .filter({ $0.confidence >= 0.65 && matchesTab($0.text, requestedTab: normalizedTab) })
             .max(by: { $0.confidence < $1.confidence }) else {
             return nil
         }
@@ -99,5 +99,14 @@ public struct ProfileInteractionSafety: Sendable {
             .lowercased()
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func matchesTab(_ observedText: String, requestedTab: String) -> Bool {
+        let candidate = normalize(observedText)
+        guard requestedTab == "moments" else { return candidate == requestedTab }
+        return candidate.range(
+            of: #"^moments\s*\d*$"#,
+            options: .regularExpression
+        ) != nil
     }
 }

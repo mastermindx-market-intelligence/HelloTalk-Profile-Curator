@@ -150,7 +150,11 @@ private struct ProfileGridCard: View {
             Text(item.profile.usernameNormalized).font(.caption.monospaced()).foregroundStyle(.secondary)
             HStack {
                 signal(item.profile.age.map(String.init) ?? "Age ?")
-                signal(item.profile.mbti ?? (item.profile.isPreferredLocationNoMBTI ? "No MBTI" : "MBTI ?"))
+                signal(item.profile.mbti ?? (
+                    item.profile.isPreferredLocationNoMBTI || item.profile.isUnknownLocationNoMBTI
+                        ? "No MBTI"
+                        : "MBTI ?"
+                ))
                 signal(item.profile.cityNormalized ?? item.profile.countryNormalized ?? "Location ?")
             }
             HStack {
@@ -222,7 +226,9 @@ private struct ProfileDetailView: View {
                                 label: "Group",
                                 value: item.profile.isPreferredLocationNoMBTI
                                     ? "Preferred-location exception"
-                                    : humanized(item.profile.mbtiGroup ?? "None")
+                                    : (item.profile.isUnknownLocationNoMBTI
+                                        ? "Unknown-location exception"
+                                        : humanized(item.profile.mbtiGroup ?? "None"))
                             )
                             DetailFieldRow(
                                 label: "Location",
@@ -250,8 +256,19 @@ private struct ProfileDetailView: View {
                     }
                     if item.profile.isPreferredLocationNoMBTI {
                         Label(
-                            "Tier 1 / no-MBTI exception: overall emphasizes face (55%) and lifestyle (35%), then applies an 8-point missing-MBTI deduction.",
+                            "Tier 1–2 / no-MBTI exception: overall emphasizes face (55%) and lifestyle (35%), then applies an 8-point missing-MBTI deduction.",
                             systemImage: "location.fill.viewfinder"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                    }
+                    if item.profile.isLocationMissing {
+                        Label(
+                            item.profile.typedGroup == .primary || (item.profile.faceScore ?? 0) >= 90
+                                ? "Location unavailable: no location deduction is applied."
+                                : "Location unavailable: an 8-point deduction is applied until face score reaches 90.",
+                            systemImage: "location.slash.fill"
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)

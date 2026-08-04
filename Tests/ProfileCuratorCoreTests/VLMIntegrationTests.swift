@@ -164,16 +164,16 @@ final class VLMIntegrationTests: XCTestCase {
     func testPreferredLocationNoMBTIReceivesDeratedOverallAfterAnalysis() async throws {
         let context = try temporaryRepository()
         let profile = try context.repository.upsert(ProfileDraft(
-            usernameRaw: "@tier1-no-mbti",
+            usernameRaw: "@tier2-no-mbti",
             age: 20,
             gender: .female,
             location: NormalizedLocation(
-                rawText: "Shenzhen",
-                city: "Shenzhen",
-                province: "Guangdong",
+                rawText: "Beijing",
+                city: "Beijing",
+                province: nil,
                 country: "China",
-                tier: 1,
-                score: 100,
+                tier: 2,
+                score: 85,
                 confidence: 0.95
             )
         ))
@@ -205,7 +205,44 @@ final class VLMIntegrationTests: XCTestCase {
         let updated = try XCTUnwrap(context.repository.profile(id: profile.id))
         XCTAssertTrue(updated.isPreferredLocationNoMBTI)
         XCTAssertEqual(try XCTUnwrap(updated.lifestyleScore), 70, accuracy: 0.001)
-        XCTAssertEqual(try XCTUnwrap(updated.overallScore), 74.9, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(updated.overallScore), 73.4, accuracy: 0.001)
+    }
+
+    func testUnknownLocationNoMBTIIsRetainedAndReceivesBothDeductions() async throws {
+        let context = try temporaryRepository()
+        let profile = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@unknown-location-no-mbti",
+            age: 20,
+            gender: .female
+        ))
+        try context.repository.updateScores(
+            id: profile.id,
+            face: 88,
+            lifestyle: nil,
+            overall: nil,
+            confidence: 0.8
+        )
+        let image = context.root.appendingPathComponent("unknown-location-context.png")
+        try Data("image".utf8).write(to: image)
+        _ = try context.repository.enqueueAnalysis(
+            profileID: profile.id,
+            type: .lifestyle,
+            modelName: "qwen3.5:9b",
+            promptVersion: VLMPromptLibrary.lifestyleVersion,
+            mediaPaths: [image.path]
+        )
+        let response = Data(#"{"lifestyle_affluence_signal":70,"confidence":80,"evidence":[],"actual_wealth":"unknown"}"#.utf8)
+        let processor = AnalysisQueueProcessor(
+            repository: context.repository,
+            client: MockVLMClient(result: .success(response)),
+            configuration: VLMConfiguration()
+        )
+
+        let processed = await processor.processNext()
+        XCTAssertTrue(processed)
+        let updated = try XCTUnwrap(context.repository.profile(id: profile.id))
+        XCTAssertTrue(updated.isUnknownLocationNoMBTI)
+        XCTAssertEqual(try XCTUnwrap(updated.overallScore), 65, accuracy: 0.001)
     }
 
     private func temporaryRepository() throws -> (repository: ProfileRepository, root: URL) {

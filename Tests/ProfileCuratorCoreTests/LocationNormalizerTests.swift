@@ -36,8 +36,32 @@ final class LocationNormalizerTests: XCTestCase {
         XCTAssertEqual(result.tier, 2)
     }
 
+    func testExpandedTierTwoCitiesAllowPreferredNoMBTIException() {
+        for value in ["Beijing", "上海", "Chengdu", "重庆", "Hangzhou", "苏州"] {
+            let result = LocationNormalizer().normalize(value)
+            XCTAssertEqual(result.tier, 2, value)
+            XCTAssertEqual(result.score, 85, value)
+        }
+    }
+
+    func testNewTierThreeCitiesPassGeneralLocationGate() {
+        let expected = [
+            "Wuhan": "Wuhan",
+            "Ninbo": "Ningbo",
+            "南京": "Nanjing",
+            "青岛": "Qingdao",
+            "郑州": "Zhengzhou"
+        ]
+        for (input, city) in expected {
+            let result = LocationNormalizer().normalize(input)
+            XCTAssertEqual(result.city, city, input)
+            XCTAssertEqual(result.tier, 3, input)
+            XCTAssertEqual(result.score, 70, input)
+        }
+    }
+
     func testUnknownAndMissingRemainDistinct() {
-        let knownButUnmapped = LocationNormalizer().normalize("Qingdao")
+        let knownButUnmapped = LocationNormalizer().normalize("Jinan")
         let missing = LocationNormalizer().normalize("   ")
 
         XCTAssertEqual(knownButUnmapped.tier, 5)

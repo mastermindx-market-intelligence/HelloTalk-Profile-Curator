@@ -5,11 +5,15 @@ final class CollectionPolicyTests: XCTestCase {
     func testOpenedProfileMustVerifyUsernameFemaleAdultAgeAndTargetMBTI() {
         let policy = ProfileEligibilityPolicy()
         XCTAssertEqual(
-            policy.evaluate(OpenedProfileEvidence(username: "@a", age: 19, gender: .female, mbti: .infj)),
+            policy.evaluate(OpenedProfileEvidence(
+                username: "@a", age: 19, gender: .female, mbti: .infj, locationScore: 100
+            )),
             .collectPrimary
         )
         XCTAssertEqual(
-            policy.evaluate(OpenedProfileEvidence(username: "@b", age: 21, gender: .female, mbti: .entp)),
+            policy.evaluate(OpenedProfileEvidence(
+                username: "@b", age: 21, gender: .female, mbti: .entp, locationScore: 70
+            )),
             .collectSecondary
         )
         XCTAssertFalse(policy.evaluate(
@@ -20,7 +24,27 @@ final class CollectionPolicyTests: XCTestCase {
         ).isCollectible)
     }
 
-    func testTierOneLocationAllowsMissingButNotNonTargetMBTI() {
+    func testAgesTwentyThreeAndTwentyFourRequirePrimaryMBTI() {
+        let policy = ProfileEligibilityPolicy()
+
+        XCTAssertEqual(policy.evaluate(OpenedProfileEvidence(
+            username: "@infj-23", age: 23, gender: .female, mbti: .infj, locationScore: 30
+        )), .collectPrimary)
+        XCTAssertEqual(policy.evaluate(OpenedProfileEvidence(
+            username: "@intj-24", age: 24, gender: .female, mbti: .intj, locationScore: 85
+        )), .collectPrimary)
+        XCTAssertFalse(policy.evaluate(OpenedProfileEvidence(
+            username: "@entp-23", age: 23, gender: .female, mbti: .entp, locationScore: 100
+        )).isCollectible)
+        XCTAssertFalse(policy.evaluate(OpenedProfileEvidence(
+            username: "@missing-24", age: 24, gender: .female, mbti: nil, locationScore: 100
+        )).isCollectible)
+        XCTAssertFalse(policy.evaluate(OpenedProfileEvidence(
+            username: "@infj-22", age: 22, gender: .female, mbti: .infj, locationScore: 100
+        )).isCollectible)
+    }
+
+    func testTierOneAndTwoAllowMissingMBTIWhileTierThreeRequiresTargetMBTI() {
         let policy = ProfileEligibilityPolicy()
 
         XCTAssertEqual(
@@ -33,12 +57,33 @@ final class CollectionPolicyTests: XCTestCase {
             )),
             .collectPreferredLocationNoMBTI
         )
-        XCTAssertFalse(policy.evaluate(OpenedProfileEvidence(
+        XCTAssertEqual(policy.evaluate(OpenedProfileEvidence(
             username: "@tier2",
             age: 20,
             gender: .female,
             mbti: nil,
             locationScore: 85
+        )), .collectPreferredLocationNoMBTI)
+        XCTAssertEqual(policy.evaluate(OpenedProfileEvidence(
+            username: "@tier3-target",
+            age: 20,
+            gender: .female,
+            mbti: .infj,
+            locationScore: 70
+        )), .collectPrimary)
+        XCTAssertFalse(policy.evaluate(OpenedProfileEvidence(
+            username: "@tier3-no-mbti",
+            age: 20,
+            gender: .female,
+            mbti: nil,
+            locationScore: 70
+        )).isCollectible)
+        XCTAssertFalse(policy.evaluate(OpenedProfileEvidence(
+            username: "@tier4-secondary",
+            age: 20,
+            gender: .female,
+            mbti: .entp,
+            locationScore: 55
         )).isCollectible)
         XCTAssertFalse(policy.evaluate(OpenedProfileEvidence(
             username: "@non-target",
@@ -46,6 +91,46 @@ final class CollectionPolicyTests: XCTestCase {
             gender: .female,
             mbti: .isfj,
             locationScore: 100
+        )).isCollectible)
+    }
+
+    func testMissingLocationIsCollectibleAndPrimaryOverridesKnownLowTierLocation() {
+        let policy = ProfileEligibilityPolicy()
+
+        XCTAssertEqual(policy.evaluate(OpenedProfileEvidence(
+            username: "@primary-hidden",
+            age: 20,
+            gender: .female,
+            mbti: .intj,
+            locationScore: nil
+        )), .collectPrimary)
+        XCTAssertEqual(policy.evaluate(OpenedProfileEvidence(
+            username: "@secondary-hidden",
+            age: 20,
+            gender: .female,
+            mbti: .entp,
+            locationScore: 10
+        )), .collectSecondary)
+        XCTAssertEqual(policy.evaluate(OpenedProfileEvidence(
+            username: "@all-hidden",
+            age: 20,
+            gender: .female,
+            mbti: nil,
+            locationScore: nil
+        )), .collectUnknownLocationNoMBTI)
+        XCTAssertEqual(policy.evaluate(OpenedProfileEvidence(
+            username: "@primary-known-low-tier",
+            age: 20,
+            gender: .female,
+            mbti: .intj,
+            locationScore: 30
+        )), .collectPrimary)
+        XCTAssertFalse(policy.evaluate(OpenedProfileEvidence(
+            username: "@secondary-known-low-tier",
+            age: 20,
+            gender: .female,
+            mbti: .entp,
+            locationScore: 30
         )).isCollectible)
     }
 
@@ -107,5 +192,28 @@ final class CollectionPolicyTests: XCTestCase {
         XCTAssertEqual(strong.overall, 83, accuracy: 0.001)
         XCTAssertEqual(weak.overall, 36.25, accuracy: 0.001)
         XCTAssertGreaterThan(strong.overall, weak.overall + 40)
+    }
+
+    func testMissingLocationPenaltyIsWaivedForPrimaryOrVeryHighFace() {
+        let scorer = ScoringEngine()
+        let ordinary = ScoreComponents(
+            face: 80, lifestyle: 60, location: 10, completeness: 50, confidence: 0.8
+        )
+        let veryHighFace = ScoreComponents(
+            face: 90, lifestyle: 60, location: 10, completeness: 50, confidence: 0.8
+        )
+
+        let primary = scorer.score(group: .primary, components: ordinary, locationMissing: true)
+        let secondary = scorer.score(group: .secondary, components: ordinary, locationMissing: true)
+        let rescuedSecondary = scorer.score(group: .secondary, components: veryHighFace, locationMissing: true)
+        let missingMBTI = scorer.scorePreferredLocationNoMBTI(
+            components: ordinary,
+            locationMissing: true
+        )
+
+        XCTAssertEqual(primary.overall, 70, accuracy: 0.001)
+        XCTAssertEqual(secondary.overall, 64.5, accuracy: 0.001)
+        XCTAssertEqual(rescuedSecondary.overall, 78.75, accuracy: 0.001)
+        XCTAssertEqual(missingMBTI.overall, 56.222, accuracy: 0.001)
     }
 }

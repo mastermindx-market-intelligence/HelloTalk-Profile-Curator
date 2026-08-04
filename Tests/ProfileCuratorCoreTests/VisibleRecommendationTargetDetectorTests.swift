@@ -100,11 +100,20 @@ final class VisibleRecommendationTargetDetectorTests: XCTestCase {
             safePhotoRegion: NormalizedRect(x: 0.35, y: 0.56, width: 0.14, height: 0.12),
             confidence: 0.88
         )
+        let conditional24 = VisibleRecommendationTarget(
+            profileKey: "conditional-24",
+            displayedAge: 24,
+            ageEvidence: nil,
+            photoPoint: NormalizedPoint(x: 0.78, y: 0.62),
+            safePhotoRegion: NormalizedRect(x: 0.71, y: 0.56, width: 0.14, height: 0.12),
+            confidence: 0.97
+        )
 
-        let ranked = VisibleRecommendationTargetRanker().ranked([older, age21, age19])
+        let ranked = VisibleRecommendationTargetRanker().ranked([older, conditional24, age21, age19])
 
         XCTAssertEqual(try XCTUnwrap(ranked.first).profileKey, "middle-19")
         XCTAssertEqual(ranked[1].profileKey, "right-21")
+        XCTAssertEqual(ranked[2].profileKey, "conditional-24")
         XCTAssertEqual(ranked.last?.profileKey, "left-35")
     }
 

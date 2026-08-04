@@ -70,7 +70,11 @@ public struct ProfileRecord: Codable, FetchableRecord, PersistableRecord, Identi
     public var typedStatus: ProfileStatus { ProfileStatus(rawValue: status) ?? .new }
     public var typedMBTI: MBTIType? { mbti.flatMap(MBTIType.init(rawValue:)) }
     public var typedGroup: MBTIGroup? { mbtiGroup.flatMap(MBTIGroup.init(rawValue:)) }
-    public var isPreferredLocationNoMBTI: Bool { mbti == nil && locationScore == 100 }
+    public var isPreferredLocationNoMBTI: Bool {
+        mbti == nil && (locationScore ?? 0) >= ProfileEligibilityPolicy.minimumNoMBTILocationScore
+    }
+    public var isLocationMissing: Bool { (locationScore ?? 10) <= 10 }
+    public var isUnknownLocationNoMBTI: Bool { mbti == nil && isLocationMissing }
     public var hobbies: [String] {
         guard let data = hobbiesJSON.data(using: .utf8) else { return [] }
         return (try? JSONDecoder().decode([String].self, from: data)) ?? []
@@ -258,6 +262,7 @@ public struct ProfileQuery: Hashable, Sendable {
     public var city: String?
     public var secondaryHighPriorityOnly: Bool
     public var preferredLocationNoMBTIOnly: Bool
+    public var missingLocationOnly: Bool
     public var minimumFaceScore: Double?
     public var minimumLifestyleScore: Double?
     public var minimumOverallScore: Double?
@@ -277,6 +282,7 @@ public struct ProfileQuery: Hashable, Sendable {
         city: String? = nil,
         secondaryHighPriorityOnly: Bool = false,
         preferredLocationNoMBTIOnly: Bool = false,
+        missingLocationOnly: Bool = false,
         minimumFaceScore: Double? = nil,
         minimumLifestyleScore: Double? = nil,
         minimumOverallScore: Double? = nil,
@@ -295,6 +301,7 @@ public struct ProfileQuery: Hashable, Sendable {
         self.city = city
         self.secondaryHighPriorityOnly = secondaryHighPriorityOnly
         self.preferredLocationNoMBTIOnly = preferredLocationNoMBTIOnly
+        self.missingLocationOnly = missingLocationOnly
         self.minimumFaceScore = minimumFaceScore
         self.minimumLifestyleScore = minimumLifestyleScore
         self.minimumOverallScore = minimumOverallScore
@@ -314,6 +321,8 @@ public struct ProfilePage: Sendable {
 }
 
 public final class ProfileRepository: @unchecked Sendable {
+    private static let defaultRepositoryLock = NSLock()
+
     public let databasePath: String
     private let databaseQueue: DatabaseQueue
 
@@ -342,6 +351,11 @@ public final class ProfileRepository: @unchecked Sendable {
     }
 
     public static func defaultRepository(fileManager: FileManager = .default) throws -> ProfileRepository {
+        // Inspector and dashboard models are created independently at launch.
+        // Serialize their first-open migrations so both cannot race for the
+        // same SQLite schema lock when a new app version adds a migration.
+        defaultRepositoryLock.lock()
+        defer { defaultRepositoryLock.unlock() }
         let root = try defaultDataDirectory(fileManager: fileManager)
         return try ProfileRepository(databasePath: root.appendingPathComponent("curator.sqlite").path)
     }
@@ -668,7 +682,10 @@ public final class ProfileRepository: @unchecked Sendable {
             clauses.append("mbti_group = 'secondary' AND (face_score >= 82 OR lifestyle_score >= 82 OR profile_signals_score >= 82 OR overall_score >= 76 OR location_score >= 100)")
         }
         if query.preferredLocationNoMBTIOnly {
-            clauses.append("mbti IS NULL AND location_score = 100")
+            clauses.append("mbti IS NULL AND location_score >= \(ProfileEligibilityPolicy.minimumNoMBTILocationScore)")
+        }
+        if query.missingLocationOnly {
+            clauses.append("COALESCE(location_score, 10) <= 10")
         }
         if let value = query.minimumFaceScore { clauses.append("face_score >= ?"); arguments += [value] }
         if let value = query.minimumLifestyleScore { clauses.append("lifestyle_score >= ?"); arguments += [value] }
@@ -780,6 +797,57 @@ public final class ProfileRepository: @unchecked Sendable {
                 table.add(column: "occupation_score", .double)
                 table.add(column: "profile_signals_score", .double)
             }
+        }
+        migrator.registerMigration("v4-location-eligibility-tiers") { database in
+            // Reclassify saved profiles from the original ranking so existing
+            // records use the same collection gates as newly OCR'd profiles.
+            try database.execute(sql: """
+                UPDATE profiles
+                SET location_tier = 4, location_score = 55
+                WHERE city_normalized IN ('Xi''an', 'Xiamen')
+                """)
+            try database.execute(sql: """
+                UPDATE profiles
+                SET location_tier = 3, location_score = 70
+                WHERE city_normalized IN ('Wuhan', 'Ningbo', 'Nanjing', 'Qingdao', 'Zhengzhou')
+                """)
+            try database.execute(sql: """
+                UPDATE profiles
+                SET location_tier = 2, location_score = 85
+                WHERE city_normalized IN (
+                    'Hong Kong', 'Guangzhou', 'Dongguan', 'Foshan', 'Zhuhai',
+                    'Beijing', 'Shanghai', 'Chengdu', 'Chongqing', 'Hangzhou', 'Suzhou'
+                ) OR province_normalized = 'Guangdong'
+                """)
+            try database.execute(sql: """
+                UPDATE profiles
+                SET location_tier = 1, location_score = 100
+                WHERE city_normalized = 'Shenzhen'
+                   OR country_normalized IN ('United States', 'Australia', 'United Kingdom', 'Canada')
+                """)
+            try database.execute(sql: """
+                UPDATE profiles
+                SET overall_score = CASE
+                    WHEN mbti_group = 'primary' AND COALESCE(location_score, 10) <= 10 THEN
+                        face_score * 0.5625 + lifestyle_score * 0.3125
+                        + profile_completeness_score * 0.125
+                    WHEN mbti_group = 'secondary' AND COALESCE(location_score, 10) <= 10 THEN
+                        MAX(0, face_score * 0.625 + lifestyle_score * 0.375
+                            - CASE WHEN face_score >= 90 THEN 0 ELSE 8 END)
+                    WHEN mbti IS NULL AND COALESCE(location_score, 10) <= 10 THEN
+                        MAX(0, face_score * (0.55 / 0.90) + lifestyle_score * (0.35 / 0.90)
+                            - 8 - CASE WHEN face_score >= 90 THEN 0 ELSE 8 END)
+                    WHEN mbti_group = 'primary' THEN
+                        face_score * 0.45 + lifestyle_score * 0.25
+                        + location_score * 0.20 + profile_completeness_score * 0.10
+                    WHEN mbti_group = 'secondary' THEN
+                        face_score * 0.50 + lifestyle_score * 0.30 + location_score * 0.20
+                    WHEN mbti IS NULL AND location_score >= 85 THEN
+                        MAX(0, face_score * 0.55 + lifestyle_score * 0.35 + location_score * 0.10 - 8)
+                    ELSE overall_score
+                END
+                WHERE face_score IS NOT NULL AND lifestyle_score IS NOT NULL
+                """)
         }
         return migrator
     }

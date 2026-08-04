@@ -26,15 +26,22 @@ public enum ProfileEligibilityDecision: Equatable, Sendable {
     case collectPrimary
     case collectSecondary
     case collectPreferredLocationNoMBTI
+    case collectUnknownLocationNoMBTI
     case routingOnly(String)
 
     public var isCollectible: Bool {
-        self == .collectPrimary || self == .collectSecondary || self == .collectPreferredLocationNoMBTI
+        self == .collectPrimary
+            || self == .collectSecondary
+            || self == .collectPreferredLocationNoMBTI
+            || self == .collectUnknownLocationNoMBTI
     }
 }
 
 public struct ProfileEligibilityPolicy: Sendable {
     public static let adultTargetAges = 18...21
+    public static let primaryMBTIAgeException = 23...24
+    public static let minimumGeneralLocationScore = 70
+    public static let minimumNoMBTILocationScore = 85
 
     public init() {}
 
@@ -46,15 +53,29 @@ public struct ProfileEligibilityPolicy: Sendable {
         guard evidence.gender == .female else {
             return .routingOnly("female_badge_unverified")
         }
-        guard let age = evidence.age, Self.adultTargetAges.contains(age) else {
-            return .routingOnly("age_outside_18_21_or_unverified")
+        guard let age = evidence.age else {
+            return .routingOnly("age_unverified")
         }
+        let standardAge = Self.adultTargetAges.contains(age)
+        let primaryAgeException = Self.primaryMBTIAgeException.contains(age)
+            && evidence.mbti?.group == .primary
+        guard standardAge || primaryAgeException else {
+            return .routingOnly("age_outside_18_21_and_not_23_24_primary_mbti")
+        }
+        let locationScore = evidence.locationScore ?? 10
+        let locationMissing = locationScore <= 10
         switch evidence.mbti?.group {
         case .primary: return .collectPrimary
-        case .secondary: return .collectSecondary
+        case .secondary where locationMissing || locationScore >= Self.minimumGeneralLocationScore:
+            return .collectSecondary
+        case .secondary:
+            return .routingOnly("known_location_outside_tiers_1_3")
         case nil where evidence.mbti != nil: return .routingOnly("non_target_mbti")
-        case nil where evidence.locationScore == 100: return .collectPreferredLocationNoMBTI
-        case nil: return .routingOnly("target_mbti_missing_and_location_not_tier_1")
+        case nil where locationScore >= Self.minimumNoMBTILocationScore:
+            return .collectPreferredLocationNoMBTI
+        case nil where locationMissing:
+            return .collectUnknownLocationNoMBTI
+        case nil: return .routingOnly("target_mbti_missing_and_location_not_tier_1_or_2")
         }
     }
 }
@@ -235,6 +256,8 @@ public struct ScoringEngine: Sendable {
     public var secondaryOverallThreshold: Double
     public var secondaryLocationThreshold: Double
     public var preferredLocationNoMBTIPenalty: Double
+    public var missingLocationPenalty: Double
+    public var missingLocationFaceWaiverThreshold: Double
 
     public init(
         primaryWeights: ScoreWeights = .primary,
@@ -243,7 +266,9 @@ public struct ScoringEngine: Sendable {
         secondaryLifestyleThreshold: Double = 82,
         secondaryOverallThreshold: Double = 76,
         secondaryLocationThreshold: Double = 100,
-        preferredLocationNoMBTIPenalty: Double = 8
+        preferredLocationNoMBTIPenalty: Double = 8,
+        missingLocationPenalty: Double = 8,
+        missingLocationFaceWaiverThreshold: Double = 90
     ) {
         self.primaryWeights = primaryWeights
         self.secondaryWeights = secondaryWeights
@@ -252,14 +277,32 @@ public struct ScoringEngine: Sendable {
         self.secondaryOverallThreshold = secondaryOverallThreshold
         self.secondaryLocationThreshold = secondaryLocationThreshold
         self.preferredLocationNoMBTIPenalty = min(25, max(0, preferredLocationNoMBTIPenalty))
+        self.missingLocationPenalty = min(25, max(0, missingLocationPenalty))
+        self.missingLocationFaceWaiverThreshold = min(100, max(0, missingLocationFaceWaiverThreshold))
     }
 
-    public func score(group: MBTIGroup, components: ScoreComponents) -> ProfileScore {
+    public func score(
+        group: MBTIGroup,
+        components: ScoreComponents,
+        locationMissing: Bool = false
+    ) -> ProfileScore {
         let weights = group == .primary ? primaryWeights : secondaryWeights
-        let overall = components.face * weights.face
-            + components.lifestyle * weights.lifestyle
-            + components.location * weights.location
-            + components.completeness * weights.completeness
+        let base: Double
+        if locationMissing {
+            let remainingWeight = max(0.0001, weights.face + weights.lifestyle + weights.completeness)
+            base = components.face * weights.face / remainingWeight
+                + components.lifestyle * weights.lifestyle / remainingWeight
+                + components.completeness * weights.completeness / remainingWeight
+        } else {
+            base = components.face * weights.face
+                + components.lifestyle * weights.lifestyle
+                + components.location * weights.location
+                + components.completeness * weights.completeness
+        }
+        let waiveMissingLocationPenalty = group == .primary
+            || components.face >= missingLocationFaceWaiverThreshold
+        let locationPenalty = locationMissing && !waiveMissingLocationPenalty ? missingLocationPenalty : 0
+        let overall = max(0, base - locationPenalty)
         let adjusted = overall * (0.75 + 0.25 * components.confidence)
         let highPriority = group == .secondary && (
             components.face >= secondaryFaceThreshold
@@ -270,11 +313,22 @@ public struct ScoringEngine: Sendable {
         return ProfileScore(overall: overall, confidenceAdjusted: adjusted, secondaryHighPriority: highPriority)
     }
 
-    public func scorePreferredLocationNoMBTI(components: ScoreComponents) -> ProfileScore {
-        let base = components.face * 0.55
-            + components.lifestyle * 0.35
-            + components.location * 0.10
-        let overall = max(0, base - preferredLocationNoMBTIPenalty)
+    public func scorePreferredLocationNoMBTI(
+        components: ScoreComponents,
+        locationMissing: Bool = false
+    ) -> ProfileScore {
+        let base: Double
+        if locationMissing {
+            base = components.face * (0.55 / 0.90) + components.lifestyle * (0.35 / 0.90)
+        } else {
+            base = components.face * 0.55
+                + components.lifestyle * 0.35
+                + components.location * 0.10
+        }
+        let locationPenalty = locationMissing && components.face < missingLocationFaceWaiverThreshold
+            ? missingLocationPenalty
+            : 0
+        let overall = max(0, base - preferredLocationNoMBTIPenalty - locationPenalty)
         let adjusted = overall * (0.75 + 0.25 * components.confidence)
         let highPriority = components.face >= secondaryFaceThreshold
             || components.lifestyle >= secondaryLifestyleThreshold

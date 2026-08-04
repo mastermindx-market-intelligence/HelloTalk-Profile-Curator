@@ -4,14 +4,14 @@ import XCTest
 final class RecommendationAgeParserTests: XCTestCase {
     private let bounds = NormalizedRect(x: 0.1, y: 0.6, width: 0.12, height: 0.04)
 
-    func testAcceptsOnlyAdultTargetRange() {
-        let observations = [17, 18, 19, 20, 21, 22].map {
+    func testAcceptsStandardAndPrimaryMBTIVerificationAgeRanges() {
+        let observations = [17, 18, 19, 20, 21, 22, 23, 24, 25].map {
             OCRObservation(text: "Age \($0)", confidence: 0.98, bounds: bounds)
         }
 
         let candidates = RecommendationAgeParser().candidates(in: observations)
 
-        XCTAssertEqual(candidates.map(\.age), [18, 19, 20, 21])
+        XCTAssertEqual(candidates.map(\.age), [18, 19, 20, 21, 23, 24])
     }
 
     func testRejectsLowConfidenceAge() {

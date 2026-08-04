@@ -111,10 +111,50 @@ final class ProfileRepositoryTests: XCTestCase {
             mbti: .infj,
             location: shenzhen
         ))
+        _ = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@tier2-exception",
+            age: 20,
+            gender: .female,
+            location: NormalizedLocation(
+                rawText: "Beijing",
+                city: "Beijing",
+                province: nil,
+                country: "China",
+                tier: 2,
+                score: 85,
+                confidence: 0.95
+            )
+        ))
 
         let page = try context.repository.page(ProfileQuery(preferredLocationNoMBTIOnly: true))
 
-        XCTAssertEqual(page.records.map(\.usernameNormalized), ["@exception"])
+        XCTAssertEqual(Set(page.records.map(\.usernameNormalized)), ["@exception", "@tier2-exception"])
+    }
+
+    func testMissingLocationFilterIncludesTargetAndNoMBTIProfiles() throws {
+        let context = try temporaryRepository()
+        _ = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@hidden-target",
+            age: 20,
+            gender: .female,
+            mbti: .intj
+        ))
+        _ = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@hidden-no-mbti",
+            age: 20,
+            gender: .female
+        ))
+        _ = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@known-location",
+            age: 20,
+            gender: .female,
+            mbti: .intj,
+            location: LocationNormalizer().normalize("Shenzhen")
+        ))
+
+        let page = try context.repository.page(ProfileQuery(missingLocationOnly: true))
+
+        XCTAssertEqual(Set(page.records.map(\.usernameNormalized)), ["@hidden-target", "@hidden-no-mbti"])
     }
 
     func testBalancedFinalizationCanReplaceFirstTenRetentionFlags() throws {

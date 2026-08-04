@@ -10,7 +10,7 @@ final class RecommendationGraphTraversalTests: XCTestCase {
         )
     }
 
-    func testFemaleMissingOrOutOfRangeAgeIsRoutingOnly() {
+    func testFemaleMissingOrNonExceptionAgeIsRoutingOnly() {
         let ledger = RecommendationTraversalLedger()
         XCTAssertEqual(
             ledger.decision(for: VisibleRecommendationCandidate(
@@ -23,11 +23,24 @@ final class RecommendationGraphTraversalTests: XCTestCase {
         XCTAssertEqual(
             ledger.decision(for: VisibleRecommendationCandidate(
                 profileKey: "janice",
-                displayedAge: 24,
+                displayedAge: 22,
                 genderHint: .female
             )),
             .openAsRoutingOnly
         )
+    }
+
+    func testPrimaryMBTIAgeExceptionOpensForFullProfileVerification() {
+        for age in 23...24 {
+            XCTAssertEqual(
+                RecommendationTraversalLedger().decision(for: VisibleRecommendationCandidate(
+                    profileKey: "candidate-\(age)",
+                    displayedAge: age,
+                    genderHint: .female
+                )),
+                .openForTargetVerification
+            )
+        }
     }
 
     func testRoutingNodeIsDeduplicatedAndConsumesDepth() {

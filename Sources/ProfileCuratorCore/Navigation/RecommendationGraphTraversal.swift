@@ -56,7 +56,9 @@ public struct RecommendationTraversalLedger: Sendable {
             return .openForEligibilityInspection
         }
 
-        if let age = candidate.displayedAge, (18...21).contains(age) {
+        if let age = candidate.displayedAge,
+           ProfileEligibilityPolicy.adultTargetAges.contains(age)
+            || ProfileEligibilityPolicy.primaryMBTIAgeException.contains(age) {
             return .openForTargetVerification
         }
         guard routingDepth < maximumRoutingDepth else {
