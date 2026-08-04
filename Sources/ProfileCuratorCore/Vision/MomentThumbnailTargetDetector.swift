@@ -32,7 +32,11 @@ public struct MomentThumbnailTarget: Identifiable, Hashable, Sendable {
 public struct MomentThumbnailTargetDetector: Sendable {
     public init() {}
 
-    public func targets(in image: CGImage, from marks: [CalibrationMark]) -> [MomentThumbnailTarget] {
+    public func targets(
+        in image: CGImage,
+        from marks: [CalibrationMark],
+        observations: [OCRObservation] = []
+    ) -> [MomentThumbnailTarget] {
         guard let searchMark = marks.last(where: {
             $0.context == .momentsFeed && $0.kind == .safeMomentThumbnailGrid
         }), searchMark.confirmed, searchMark.bounds.isValidNormalizedRect,
@@ -63,9 +67,15 @@ public struct MomentThumbnailTargetDetector: Sendable {
             searchMinY: searchMinY,
             searchMaxY: searchMaxY
         )
-        guard let firstRow = runs.first(where: {
-            $0.upperBound - $0.lowerBound + 1 >= Int(Double(cellSize) * 0.65)
-        }) else {
+        guard let firstRow = bestGridStart(
+            in: runs,
+            cellSize: cellSize,
+            gutter: gutter,
+            left: left,
+            imageWidth: pixels.width,
+            imageHeight: pixels.height,
+            observations: observations
+        ) else {
             return []
         }
 
@@ -125,6 +135,94 @@ public struct MomentThumbnailTargetDetector: Sendable {
         return targets
     }
 
+    private func bestGridStart(
+        in runs: [ClosedRange<Int>],
+        cellSize: Int,
+        gutter: Int,
+        left: Int,
+        imageWidth: Int,
+        imageHeight: Int,
+        observations: [OCRObservation]
+    ) -> ClosedRange<Int>? {
+        let minimumRunHeight = Int(Double(cellSize) * 0.65)
+        let candidates = runs.filter {
+            $0.upperBound - $0.lowerBound + 1 >= minimumRunHeight
+        }
+        let pitch = cellSize + gutter
+        let tolerance = max(gutter * 2, Int(Double(cellSize) * 0.08))
+        let filteredCandidates: [ClosedRange<Int>]
+        if observations.isEmpty {
+            filteredCandidates = candidates
+        } else {
+            let contamination = candidates.map {
+                ocrContamination(
+                    for: $0,
+                    left: left,
+                    gridWidth: cellSize * 3 + gutter * 2,
+                    cellSize: cellSize,
+                    imageWidth: imageWidth,
+                    imageHeight: imageHeight,
+                    observations: observations
+                )
+            }
+            let minimum = contamination.min() ?? 0
+            filteredCandidates = zip(candidates, contamination).compactMap { candidate, count in
+                count <= minimum + 1 ? candidate : nil
+            }
+        }
+
+        return filteredCandidates.max { lhs, rhs in
+            let lhsScore = alignedRowCount(
+                from: lhs,
+                candidates: candidates,
+                pitch: pitch,
+                tolerance: tolerance
+            )
+            let rhsScore = alignedRowCount(
+                from: rhs,
+                candidates: candidates,
+                pitch: pitch,
+                tolerance: tolerance
+            )
+            if lhsScore == rhsScore {
+                return lhs.lowerBound < rhs.lowerBound
+            }
+            return lhsScore < rhsScore
+        }
+    }
+
+    private func ocrContamination(
+        for candidate: ClosedRange<Int>,
+        left: Int,
+        gridWidth: Int,
+        cellSize: Int,
+        imageWidth: Int,
+        imageHeight: Int,
+        observations: [OCRObservation]
+    ) -> Int {
+        let bounds = NormalizedRect(
+            x: Double(left) / Double(imageWidth),
+            y: Double(candidate.lowerBound) / Double(imageHeight),
+            width: Double(gridWidth) / Double(imageWidth),
+            height: Double(cellSize) / Double(imageHeight)
+        )
+        return observations.filter { observation in
+            observation.confidence >= 0.45 && bounds.contains(observation.bounds.center)
+        }.count
+    }
+
+    private func alignedRowCount(
+        from candidate: ClosedRange<Int>,
+        candidates: [ClosedRange<Int>],
+        pitch: Int,
+        tolerance: Int
+    ) -> Int {
+        1 + (1..<3).filter { row in
+            let expected = candidate.lowerBound + row * pitch
+            return candidates.contains { abs($0.lowerBound - expected) <= tolerance }
+        }.count
+    }
+
     private func activeRuns(
         pixels: MomentPixelBuffer,
         left: Int,
@@ -161,24 +259,30 @@ public struct MomentThumbnailTargetDetector: Sendable {
         gutter: Int
     ) -> Bool {
         let pitch = cellSize + gutter
-        let activeColumns = (0..<3).filter { column in
+        let columnFractions = (0..<3).map { column in
             pixels.contentFraction(
                 x: left + column * pitch + 5,
                 y: y,
                 width: max(1, cellSize - 10),
                 height: 1,
                 stride: 2
-            ) > 0.05
-        }.count
-        guard activeColumns >= 2 else { return false }
-        return (1..<3).allSatisfy { boundary in
-            pixels.whiteFraction(
-                x: left + boundary * cellSize + (boundary - 1) * gutter,
-                y: y,
-                width: gutter,
-                height: 1
-            ) > 0.72
+            )
         }
+        let activeColumns = columnFractions.filter { $0 > 0.05 }.count
+        guard activeColumns >= 2 else { return false }
+        let gutterScores = (1..<3).map { boundary in
+            let expectedX = left + boundary * cellSize + (boundary - 1) * gutter
+            let probeWidth = max(2, gutter / 2)
+            return (-gutter...gutter).map { offset in
+                pixels.whiteFraction(
+                    x: expectedX + offset,
+                    y: y,
+                    width: probeWidth,
+                    height: 1
+                )
+            }.max() ?? 0
+        }
+        return gutterScores.allSatisfy { $0 > 0.75 }
     }
 
     private func patchActivity(
@@ -222,8 +326,6 @@ private struct MomentPixelBuffer {
             ) else {
                 return false
             }
-            context.translateBy(x: 0, y: CGFloat(imageHeight))
-            context.scaleBy(x: 1, y: -1)
             context.draw(image, in: CGRect(x: 0, y: 0, width: imageWidth, height: imageHeight))
             return true
         }

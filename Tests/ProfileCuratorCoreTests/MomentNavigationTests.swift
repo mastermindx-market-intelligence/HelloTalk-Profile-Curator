@@ -55,6 +55,39 @@ final class MomentNavigationTests: XCTestCase {
         XCTAssertTrue(targets.allSatisfy { $0.point.y > 0.35 && $0.point.y < 0.75 })
     }
 
+    func testDynamicGridGeometryIsScaleIndependent() throws {
+        let mark = CalibrationMark(
+            context: .momentsFeed,
+            kind: .safeMomentThumbnailGrid,
+            bounds: NormalizedRect(x: 0.057, y: 0.20, width: 0.78, height: 0.66),
+            confirmed: true
+        )
+        let image = try makeMomentGridImage(rows: 3, finalRowColumns: 2, scale: 2)
+
+        let targets = MomentThumbnailTargetDetector().targets(in: image, from: [mark])
+
+        XCTAssertEqual(targets.map(\.index), [0, 1, 2, 3, 4, 5, 6, 7])
+    }
+
+    func testLaterAlignedRowsBeatSingleThreeColumnDistractor() throws {
+        let mark = CalibrationMark(
+            context: .momentsFeed,
+            kind: .safeMomentThumbnailGrid,
+            bounds: NormalizedRect(x: 0.057, y: 0.20, width: 0.78, height: 0.66),
+            confirmed: true
+        )
+        let image = try makeMomentGridImage(
+            rows: 2,
+            finalRowColumns: 3,
+            includeThreeColumnDistractor: true
+        )
+
+        let targets = MomentThumbnailTargetDetector().targets(in: image, from: [mark])
+
+        XCTAssertEqual(targets.count, 6)
+        XCTAssertTrue(targets.allSatisfy { $0.point.y > 0.38 })
+    }
+
     func testPrivateLiveCaptureFindsEightCellsWhenFixtureIsAvailable() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -141,9 +174,14 @@ final class MomentNavigationTests: XCTestCase {
         XCTAssertEqual(allowedCommands, [.drag(start: gesture.start, end: gesture.end)])
     }
 
-    private func makeMomentGridImage(rows: Int, finalRowColumns: Int) throws -> CGImage {
-        let width = 420
-        let height = 932
+    private func makeMomentGridImage(
+        rows: Int,
+        finalRowColumns: Int,
+        scale: Int = 1,
+        includeThreeColumnDistractor: Bool = false
+    ) throws -> CGImage {
+        let width = 420 * scale
+        let height = 932 * scale
         let context = try XCTUnwrap(CGContext(
             data: nil,
             width: width,
@@ -158,12 +196,28 @@ final class MomentNavigationTests: XCTestCase {
         context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         context.setFillColor(CGColor(red: 0.1, green: 0.2, blue: 0.7, alpha: 1))
-        context.fill(CGRect(x: 24, y: height - 170 - 120, width: 326, height: 120))
+        context.fill(CGRect(
+            x: 24 * scale,
+            y: 170 * scale,
+            width: 326 * scale,
+            height: 120 * scale
+        ))
 
-        let cell = 106
-        let gutter = 5
-        let left = 24
-        let top = 360
+        let cell = 106 * scale
+        let gutter = 5 * scale
+        let left = 24 * scale
+        let top = 360 * scale
+        if includeThreeColumnDistractor {
+            context.setFillColor(CGColor(red: 0.45, green: 0.25, blue: 0.65, alpha: 1))
+            for column in 0..<3 {
+                context.fill(CGRect(
+                    x: left + column * (cell + gutter),
+                    y: 205 * scale,
+                    width: cell,
+                    height: cell
+                ))
+            }
+        }
         for row in 0..<rows {
             let columnCount = row == rows - 1 ? finalRowColumns : 3
             for column in 0..<columnCount {
@@ -171,7 +225,7 @@ final class MomentNavigationTests: XCTestCase {
                 context.setFillColor(CGColor(red: red, green: 0.25, blue: 0.55, alpha: 1))
                 context.fill(CGRect(
                     x: left + column * (cell + gutter),
-                    y: height - top - cell - row * (cell + gutter),
+                    y: top + row * (cell + gutter),
                     width: cell,
                     height: cell
                 ))

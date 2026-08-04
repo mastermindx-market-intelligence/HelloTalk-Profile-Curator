@@ -171,7 +171,7 @@ public struct FixtureReplayHarness: Sendable {
         let ageCandidates = ageParser.candidates(in: analysis.text)
         let allRecommendationAges = ageParser.allAges(in: analysis.text)
         let temporalLocation = rotatingLocationBadgeParser.resolve(frames: [analysis.text])
-        let screenClassification = NavigationStateDetector().classify(analysis)
+        let screenClassification = NavigationStateDetector().classify(analysis, image: image)
         let visibleRecommendationTargets = VisibleRecommendationTargetDetector().targets(in: analysis.text)
         var failures: [String] = []
 

@@ -121,8 +121,14 @@ final class InspectorViewModel: ObservableObject {
     }
 
     var momentThumbnailTargets: [MomentThumbnailTarget] {
-        guard screenClassification?.kind == .momentsFeed, let currentCGImage else { return [] }
-        return momentThumbnailDetector.targets(in: currentCGImage, from: calibrationMarks)
+        guard screenClassification?.kind == .momentsFeed,
+              let currentCGImage,
+              let analysis else { return [] }
+        return momentThumbnailDetector.targets(
+            in: currentCGImage,
+            from: calibrationMarks,
+            observations: analysis.text
+        )
     }
 
     var activePreviewExclusions: [ExclusionZone] {
@@ -807,7 +813,7 @@ final class InspectorViewModel: ObservableObject {
         capturedAt: Date = Date()
     ) {
         let previousState = navigationState
-        let snapshot = snapshotBuilder.build(from: result, capturedAt: capturedAt)
+        let snapshot = snapshotBuilder.build(from: result, image: cgImage, capturedAt: capturedAt)
 
         fixtureImage = image
         self.fixtureURL = fixtureURL

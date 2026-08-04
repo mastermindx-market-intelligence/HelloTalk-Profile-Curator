@@ -64,6 +64,13 @@ public struct CapturedWindowFrame: @unchecked Sendable {
 public struct WindowCaptureService: Sendable {
     public init() {}
 
+    static func targetPixelSize(for windowFrame: CGRect) -> CGSize {
+        CGSize(
+            width: max(1, windowFrame.width.rounded()),
+            height: max(1, windowFrame.height.rounded())
+        )
+    }
+
     public func capture(windowID: CGWindowID) async throws -> CapturedWindowFrame {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
         guard let window = content.windows.first(where: { $0.windowID == windowID }) else {
@@ -82,8 +89,9 @@ public struct WindowCaptureService: Sendable {
         configuration.showsCursor = false
         configuration.ignoreShadowsSingleWindow = true
         configuration.captureResolution = .best
-        configuration.width = max(1, Int(window.frame.width * 2))
-        configuration.height = max(1, Int(window.frame.height * 2))
+        let targetSize = Self.targetPixelSize(for: window.frame)
+        configuration.width = Int(targetSize.width)
+        configuration.height = Int(targetSize.height)
 
         let image = try await SCScreenshotManager.captureImage(
             contentFilter: filter,
