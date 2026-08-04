@@ -57,7 +57,7 @@ public struct GestureSafetyValidator: Sendable {
         sessionPauseReason: String? = nil,
         liveInputEnabled: Bool
     ) -> GestureSafetyDecision {
-        guard gesture.kind == .horizontalCarousel || gesture.kind == .verticalScroll else {
+        guard gesture.kind == .horizontalCarousel || gesture.kind == .verticalScroll || gesture.kind == .closeViewer else {
             return GestureSafetyDecision(isAllowed: false, rejection: .unsupportedGestureKind)
         }
         guard gesture.start.isInsideUnitSquare, gesture.end.isInsideUnitSquare else {
@@ -88,6 +88,27 @@ public struct GestureSafetyValidator: Sendable {
             return GestureSafetyDecision(isAllowed: false, rejection: .dryRunRequired)
         }
         return GestureSafetyDecision(isAllowed: true, rejection: nil)
+    }
+}
+
+public struct MomentViewerDismissPlanner: Sendable {
+    public init() {}
+
+    public func proposal(from marks: [CalibrationMark]) -> PlannedGesture? {
+        guard let mark = marks.last(where: {
+            $0.context == .momentViewer && $0.kind == .safeMomentDismissGesture
+        }) else {
+            return nil
+        }
+
+        let x = mark.bounds.center.x
+        return PlannedGesture(
+            kind: .closeViewer,
+            start: NormalizedPoint(x: x, y: mark.bounds.minY + mark.bounds.height * 0.08),
+            end: NormalizedPoint(x: x, y: mark.bounds.maxY - mark.bounds.height * 0.08),
+            requiredSafeRegion: mark.bounds,
+            rationale: "Dry-run long downward dismiss for the Moment viewer"
+        )
     }
 }
 

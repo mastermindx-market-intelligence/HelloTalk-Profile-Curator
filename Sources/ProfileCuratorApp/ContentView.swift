@@ -244,6 +244,25 @@ struct ContentView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
+                if model.screenClassification?.kind == .momentsFeed {
+                    Button("Propose next Moment thumbnail") {
+                        model.proposeNextMomentThumbnail()
+                    }
+                    .disabled(model.momentThumbnailTargets.isEmpty)
+                    Text(model.momentThumbnailProposalStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if !model.momentThumbnailTargets.isEmpty {
+                        LabeledContent("Safe Moment cells", value: "\(model.momentThumbnailTargets.count)")
+                    }
+                }
+
+                if model.screenClassification?.kind == .momentViewer {
+                    Button("Propose safe downward dismiss") {
+                        model.proposeMomentViewerDismiss()
+                    }
+                }
+
                 if !model.visibleRecommendationTargets.isEmpty {
                     LabeledContent(
                         "Visible photo targets",

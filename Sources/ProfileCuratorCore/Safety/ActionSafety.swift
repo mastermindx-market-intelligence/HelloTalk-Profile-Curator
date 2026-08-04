@@ -5,6 +5,7 @@ public enum PlannedActionKind: String, Codable, Sendable {
     case selectAboutMe
     case selectMoments
     case openRecommendationCard
+    case openMomentThumbnail
     case closeViewer
     case verticalScroll
     case horizontalCarousel

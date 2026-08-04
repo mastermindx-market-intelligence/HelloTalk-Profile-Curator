@@ -32,6 +32,8 @@ final class InspectorViewModel: ObservableObject {
     @Published var galleryGestureStatus = "Visible-card profile hopping is active"
     @Published var proposedVisibleCardTarget: VisibleRecommendationTarget?
     @Published var visibleCardProposalStatus = "No visible-card proposal"
+    @Published var proposedMomentThumbnailTarget: MomentThumbnailTarget?
+    @Published var momentThumbnailProposalStatus = "No Moment thumbnail proposal"
     @Published var recommendationLedger = RecommendationTraversalLedger()
     @Published var pendingGraphDecision: RecommendationTraversalDecision?
     @Published var collectionStatus = "No verified profile checkpoint"
@@ -51,6 +53,8 @@ final class InspectorViewModel: ObservableObject {
     private let sessionPolicy = NavigationSessionPolicy.conservativeDefault
     private let discoveryPolicy = DiscoveryPolicy.observedDefault
     private let visibleTargetDetector = VisibleRecommendationTargetDetector()
+    private let momentThumbnailDetector = MomentThumbnailTargetDetector()
+    private let momentDismissPlanner = MomentViewerDismissPlanner()
     private let socialControlDetector = SocialControlExclusionDetector()
     private let eventStore: NavigationEventLogStore?
     private var currentCGImage: CGImage?
@@ -116,12 +120,19 @@ final class InspectorViewModel: ObservableObject {
         return socialControlDetector.exclusions(in: analysis.text)
     }
 
+    var momentThumbnailTargets: [MomentThumbnailTarget] {
+        guard screenClassification?.kind == .momentsFeed else { return [] }
+        return momentThumbnailDetector.targets(from: calibrationMarks)
+    }
+
     var activePreviewExclusions: [ExclusionZone] {
-        previewExclusions + dynamicSocialExclusions
+        previewExclusions + dynamicSocialExclusions + exclusionZones(for: activeCalibrationContext)
     }
 
     var previewAction: PlannedAction {
-        proposedVisibleCardTarget?.plannedAction ?? DefaultInspectorCalibration.previewAction
+        proposedMomentThumbnailTarget?.plannedAction
+            ?? proposedVisibleCardTarget?.plannedAction
+            ?? DefaultInspectorCalibration.previewAction
     }
 
     var previewDecision: ActionSafetyDecision {
@@ -136,12 +147,16 @@ final class InspectorViewModel: ObservableObject {
 
     var galleryGestureDecision: GestureSafetyDecision? {
         guard let galleryGesture else { return nil }
-        let mark = calibrationMarks.first {
-            $0.context == .profile && $0.kind == .safeCarouselGesture
-        }
-        let requiredExclusions: Set<CalibrationMarkKind> = [.excludeFollow, .excludeSayHi, .excludeGift]
+        let context: CalibrationContext = galleryGesture.kind == .closeViewer ? .momentViewer : .profile
+        let markKind: CalibrationMarkKind = galleryGesture.kind == .closeViewer
+            ? .safeMomentDismissGesture
+            : .safeCarouselGesture
+        let mark = calibrationMarks.last { $0.context == context && $0.kind == markKind }
+        let requiredExclusions: Set<CalibrationMarkKind> = galleryGesture.kind == .closeViewer
+            ? [.excludeLike]
+            : [.excludeFollow, .excludeSayHi, .excludeGift]
         let confirmedExclusions = Set(calibrationMarks.filter {
-            $0.context == .profile && $0.confirmed && $0.kind.isExclusion
+            $0.context == context && $0.confirmed && $0.kind.isExclusion
         }.map(\.kind))
         let calibrationReady = mark?.confirmed == true && requiredExclusions.isSubset(of: confirmedExclusions)
         return GestureSafetyValidator().validate(
@@ -157,6 +172,16 @@ final class InspectorViewModel: ObservableObject {
     var sessionStatus: String {
         if let reason = sessionState.pauseReason { return "Paused · \(reason.summary)" }
         return "Dry run · \(sessionState.proposalCount)/\(sessionPolicy.maximumProposals) proposals"
+    }
+
+    private var activeCalibrationContext: CalibrationContext {
+        switch screenClassification?.kind {
+        case .connectFeed, .customSearch: .connectFeed
+        case .pfpViewer: .pfpViewer
+        case .momentsFeed: .momentsFeed
+        case .momentViewer: .momentViewer
+        default: .profile
+        }
     }
 
     var discoveryTraversalStatus: String {
@@ -406,6 +431,49 @@ final class InspectorViewModel: ObservableObject {
         recordSessionPauseIfNeeded()
     }
 
+    func proposeNextMomentThumbnail() {
+        let targets = momentThumbnailTargets
+        guard !targets.isEmpty else {
+            proposedMomentThumbnailTarget = nil
+            momentThumbnailProposalStatus = "Blocked · capture the scrolled Moments grid and confirm its safe region"
+            recordEvent(.proposal, summary: momentThumbnailProposalStatus)
+            return
+        }
+        let scannedCount = (try? currentCollectedProfile().map {
+            try profileRepository?.media(profileID: $0.id).filter { $0.typedKind == .moment }.count ?? 0
+        }) ?? 0
+        let target = targets[scannedCount % targets.count]
+        proposedMomentThumbnailTarget = target
+        proposedVisibleCardTarget = nil
+        pendingPostcondition = .viewerDetected
+        lastPostconditionResult = nil
+        sessionState.recordProposal(policy: sessionPolicy)
+        let decision = previewDecision
+        if decision.rejection == .dryRunRequired {
+            momentThumbnailProposalStatus = "Cell \(target.index + 1) · safe image geometry; viewer check armed"
+        } else if let rejection = decision.rejection {
+            momentThumbnailProposalStatus = "Cell \(target.index + 1) · blocked: \(actionRejectionDescription(rejection))"
+        } else {
+            momentThumbnailProposalStatus = "Cell \(target.index + 1) · allowed"
+        }
+        recordEvent(.proposal, summary: momentThumbnailProposalStatus)
+        recordEvent(.safetyDecision, summary: momentThumbnailProposalStatus)
+        recordSessionPauseIfNeeded()
+    }
+
+    func proposeMomentViewerDismiss() {
+        galleryGesture = momentDismissPlanner.proposal(from: calibrationMarks)
+        guard galleryGesture != nil else {
+            galleryGestureStatus = "Blocked · confirm a Moment viewer dismiss gesture region first"
+            return
+        }
+        galleryGestureStatus = galleryGestureDecision?.rejection == .dryRunRequired
+            ? "Safe downward viewer-dismiss path; profile-page check required after execution"
+            : "Blocked · \(gestureRejectionDescription(galleryGestureDecision?.rejection))"
+        recordEvent(.proposal, summary: galleryGestureStatus)
+        recordEvent(.safetyDecision, summary: galleryGestureStatus)
+    }
+
     func armGalleryPostcondition() {
         guard let observationSnapshot else {
             galleryGestureStatus = "Capture a baseline frame before arming a postcondition"
@@ -632,6 +700,8 @@ final class InspectorViewModel: ObservableObject {
         galleryGestureStatus = "Visible-card profile hopping is active"
         proposedVisibleCardTarget = nil
         visibleCardProposalStatus = "No visible-card proposal"
+        proposedMomentThumbnailTarget = nil
+        momentThumbnailProposalStatus = "No Moment thumbnail proposal"
         recommendationLedger = RecommendationTraversalLedger()
         pendingGraphCandidate = nil
         pendingGraphDecision = nil
@@ -745,6 +815,8 @@ final class InspectorViewModel: ObservableObject {
         analysis = result
         proposedVisibleCardTarget = nil
         visibleCardProposalStatus = "No visible-card proposal for this frame"
+        proposedMomentThumbnailTarget = nil
+        momentThumbnailProposalStatus = "No Moment thumbnail proposal for this frame"
         temporalLocation = rotatingLocationBadgeParser.resolve(frames: [result.text])
         screenClassification = snapshot.screen
         observationSnapshot = snapshot

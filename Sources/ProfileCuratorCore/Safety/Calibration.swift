@@ -4,6 +4,8 @@ public enum CalibrationMarkKind: String, CaseIterable, Codable, Sendable, Identi
     case safeAvatar
     case safeAboutMe
     case safeMoments
+    case safeMomentThumbnailGrid
+    case safeMomentDismissGesture
     case safeRecommendationCard
     case safeCarouselGesture
     case safeBackClose
@@ -22,6 +24,8 @@ public enum CalibrationMarkKind: String, CaseIterable, Codable, Sendable, Identi
         case .safeAvatar: "Safe: Avatar"
         case .safeAboutMe: "Safe: About Me tab"
         case .safeMoments: "Safe: Moments tab"
+        case .safeMomentThumbnailGrid: "Safe: Moment thumbnail grid"
+        case .safeMomentDismissGesture: "Safe: Moment dismiss gesture"
         case .safeRecommendationCard: "Safe: Recommendation card body"
         case .safeCarouselGesture: "Safe: Carousel gesture zone"
         case .safeBackClose: "Safe: Back / close"
@@ -180,9 +184,22 @@ public enum ObservedHelloTalkCalibration {
             bounds: NormalizedRect(x: 0.057, y: 0.103, width: 0.062, height: 0.04)
         ),
         CalibrationMark(
+            context: .momentsFeed,
+            kind: .safeMomentThumbnailGrid,
+            bounds: NormalizedRect(x: 0.057, y: 0.357, width: 0.78, height: 0.349),
+            confirmed: true
+        ),
+        CalibrationMark(
+            context: .momentViewer,
+            kind: .safeMomentDismissGesture,
+            bounds: NormalizedRect(x: 0.12, y: 0.25, width: 0.76, height: 0.58),
+            confirmed: true
+        ),
+        CalibrationMark(
             context: .momentViewer,
             kind: .excludeLike,
-            bounds: NormalizedRect(x: 0.057, y: 0.89, width: 0.881, height: 0.072)
+            bounds: NormalizedRect(x: 0.057, y: 0.89, width: 0.881, height: 0.072),
+            confirmed: true
         )
     ]
 }

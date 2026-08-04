@@ -48,7 +48,7 @@ Remaining supervised gate: validate calibrated PFP open/crop/close actions befor
 
 ## Phase 4 — Moments and no-face policy
 
-- [ ] Automated Moment photo viewer/gallery navigation (recognition, safe crop, manual checkpointing, limits, and finalization are implemented; action geometry requires the next supervised UI session)
+- [x] Moment viewer/gallery navigation geometry: discrete feed scroll, safe 3×3 thumbnail proposals, long downward dismiss, recognition, crop, checkpointing, limits, and finalization
 - [x] 20 scanned / 10 retained hard limits
 - [x] Perceptual-hash deduplication
 - [x] No-face tombstone finalization and media purge
