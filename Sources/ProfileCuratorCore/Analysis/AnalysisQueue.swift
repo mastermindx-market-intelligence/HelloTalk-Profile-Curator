@@ -56,17 +56,22 @@ public actor AnalysisQueueProcessor {
         guard let job = try? repository.nextAnalysisJob(now: now) else { return false }
         do {
             try repository.updateAnalysisJob(id: job.id, state: .running, attemptCount: job.attemptCount + 1, nextAttemptAt: nil, error: nil, now: now)
-            let prompt = Self.prompt(for: job.analysisType)
-            let images = try job.mediaPaths.prefix(3).map { try Data(contentsOf: URL(fileURLWithPath: $0)) }
+            let selectedPaths = Array(job.mediaPaths.prefix(3))
+            let imageReferences = selectedPaths.enumerated().map {
+                AnalysisImageReference(sourceImageID: "image-\($0.offset + 1)", filePath: $0.element)
+            }
+            let prompt = VLMPromptLibrary.prompt(Self.prompt(for: job.analysisType), imageReferences: imageReferences)
+            let images = try selectedPaths.map { try Data(contentsOf: URL(fileURLWithPath: $0)) }
             let response = try await client.generateJSON(prompt: prompt, images: images)
             let decoded = try Self.decode(response, type: job.analysisType)
+            let requestTrace = try JSONEncoder().encode(AnalysisRequestTrace(images: imageReferences))
             let run = AnalysisRunRecord(
                 id: UUID().uuidString,
                 profileID: job.profileID,
                 analysisType: job.analysisType.rawValue,
                 modelName: job.modelName,
                 promptVersion: job.promptVersion,
-                requestJSON: "{\"image_count\":\(images.count)}",
+                requestJSON: String(decoding: requestTrace, as: UTF8.self),
                 responseJSON: String(data: response, encoding: .utf8),
                 startedAt: now,
                 completedAt: Date(),
@@ -126,7 +131,7 @@ public actor AnalysisQueueProcessor {
         var confidence = profile.analysisConfidence
         switch result {
         case .faceVerification(let verification):
-            confidence = max(confidence, min(1, max(0, verification.confidence)))
+            confidence = max(confidence, normalizedConfidence(verification.confidence))
         case .visualAppeal(let value):
             face = min(100, max(0, value.visualAppealScore - value.photoQualityPenalty))
             confidence = combinedConfidence(existing: confidence, new: value.confidence)
@@ -160,7 +165,12 @@ public actor AnalysisQueueProcessor {
     }
 
     private func combinedConfidence(existing: Double, new: Double) -> Double {
-        let normalized = min(1, max(0, new))
+        let normalized = normalizedConfidence(new)
         return existing > 0 ? (existing + normalized) / 2 : normalized
+    }
+
+    private func normalizedConfidence(_ value: Double) -> Double {
+        let ratio = value > 1 ? value / 100 : value
+        return min(1, max(0, ratio))
     }
 }

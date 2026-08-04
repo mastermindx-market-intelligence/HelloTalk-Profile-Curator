@@ -74,7 +74,7 @@ Live endpoint verified: Windows Ollama serves `qwen3.5:9b` from localhost throug
 - [x] Database-backed filters, sorting, and pagination
 - [x] Detail gallery, score breakdown, notes, and review shortcuts
 - [x] CSV/JSON export and data deletion tools
-- [ ] Per-image Qwen evidence links (populates after live endpoint wiring)
+- [x] Per-image Qwen evidence links with ordered source IDs and clickable retained-media previews
 
 ## Phase 8 — packaging and hardening
 

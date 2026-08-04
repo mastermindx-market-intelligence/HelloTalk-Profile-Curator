@@ -63,6 +63,39 @@ final class VLMIntegrationTests: XCTestCase {
         XCTAssertEqual(try context.repository.analysisRuns(profileID: profile.id).count, 1)
     }
 
+    func testSuccessfulRunPersistsOrderedImageEvidenceLinks() async throws {
+        let context = try temporaryRepository()
+        let profile = try context.repository.upsert(ProfileDraft(usernameRaw: "@evidence", age: 19, gender: .female, mbti: .infj))
+        let first = context.root.appendingPathComponent("first.png")
+        let second = context.root.appendingPathComponent("second.png")
+        try Data("first".utf8).write(to: first)
+        try Data("second".utf8).write(to: second)
+        _ = try context.repository.enqueueAnalysis(
+            profileID: profile.id,
+            type: .lifestyle,
+            modelName: "qwen3.5:9b",
+            promptVersion: VLMPromptLibrary.lifestyleVersion,
+            mediaPaths: [first.path, second.path]
+        )
+        let response = Data(#"{"lifestyle_affluence_signal":66,"confidence":80,"evidence":[{"category":"travel","strength":"moderate","source_image_id":"image-2","explanation":"Visible landmark"}],"actual_wealth":"unknown"}"#.utf8)
+        let client = MockVLMClient(result: .success(response))
+        let processor = AnalysisQueueProcessor(
+            repository: context.repository,
+            client: client,
+            configuration: VLMConfiguration()
+        )
+
+        let processed = await processor.processNext()
+        XCTAssertTrue(processed)
+        let run = try XCTUnwrap(context.repository.analysisRuns(profileID: profile.id).first)
+        XCTAssertEqual(run.requestTrace?.images.map(\.sourceImageID), ["image-1", "image-2"])
+        XCTAssertEqual(run.requestTrace?.images.map(\.filePath), [first.path, second.path])
+        XCTAssertEqual(run.lifestyleEvidence(sourceImageID: "image-2").first?.category, "travel")
+        XCTAssertEqual(try XCTUnwrap(context.repository.profile(id: profile.id)).analysisConfidence, 0.8, accuracy: 0.001)
+        let prompt = await client.lastPrompt
+        XCTAssertTrue(prompt?.contains("image-1, image-2") == true)
+    }
+
     private func temporaryRepository() throws -> (repository: ProfileRepository, root: URL) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -73,7 +106,11 @@ final class VLMIntegrationTests: XCTestCase {
 
 private actor MockVLMClient: VLMClientProtocol {
     let result: Result<Data, Error>
+    private(set) var lastPrompt: String?
     init(result: Result<Data, Error>) { self.result = result }
     func health() async throws -> VLMHealth { VLMHealth(reachable: true, configuredModelAvailable: true, availableModels: []) }
-    func generateJSON(prompt: String, images: [Data]) async throws -> Data { try result.get() }
+    func generateJSON(prompt: String, images: [Data]) async throws -> Data {
+        lastPrompt = prompt
+        return try result.get()
+    }
 }

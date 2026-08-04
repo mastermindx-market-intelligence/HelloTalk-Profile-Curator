@@ -116,22 +116,85 @@ public struct LifestyleSignalResult: Codable, Hashable, Sendable {
     }
 }
 
+public struct AnalysisImageReference: Codable, Hashable, Sendable, Identifiable {
+    public let sourceImageID: String
+    public let filePath: String
+
+    public var id: String { sourceImageID }
+
+    public init(sourceImageID: String, filePath: String) {
+        self.sourceImageID = sourceImageID
+        self.filePath = filePath
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sourceImageID = "source_image_id"
+        case filePath = "file_path"
+    }
+}
+
+public struct AnalysisRequestTrace: Codable, Hashable, Sendable {
+    public let imageCount: Int
+    public let images: [AnalysisImageReference]
+
+    public init(images: [AnalysisImageReference]) {
+        self.imageCount = images.count
+        self.images = images
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case imageCount = "image_count"
+        case images
+    }
+}
+
+public extension AnalysisRunRecord {
+    var requestTrace: AnalysisRequestTrace? {
+        guard let data = requestJSON.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(AnalysisRequestTrace.self, from: data)
+    }
+
+    var lifestyleEvidence: [LifestyleEvidence] {
+        guard analysisType == AnalysisType.lifestyle.rawValue,
+              let responseJSON,
+              let data = responseJSON.data(using: .utf8),
+              let result = try? JSONDecoder().decode(LifestyleSignalResult.self, from: data) else {
+            return []
+        }
+        return result.evidence
+    }
+
+    func lifestyleEvidence(sourceImageID: String) -> [LifestyleEvidence] {
+        lifestyleEvidence.filter { $0.sourceImageID == sourceImageID }
+    }
+}
+
 public enum VLMPromptLibrary {
-    public static let faceVerificationVersion = "face-verification-v1"
-    public static let visualAppealVersion = "visual-appeal-v1"
-    public static let lifestyleVersion = "lifestyle-evidence-v1"
+    public static let faceVerificationVersion = "face-verification-v2"
+    public static let visualAppealVersion = "visual-appeal-v2"
+    public static let lifestyleVersion = "lifestyle-evidence-v2"
 
     public static let faceVerification = """
-    Return JSON only. Determine whether the provided crop contains a photographic human face that is clear enough for presentation scoring. Distinguish illustration/anime and heavy filtering. Do not identify the person or infer protected traits. Use keys: is_photographic_human_face, is_illustration_or_anime, is_heavily_filtered, is_face_clear_enough_to_score, confidence.
+    Return JSON only. Determine whether the provided crop contains a photographic human face that is clear enough for presentation scoring. Distinguish illustration/anime and heavy filtering. Do not identify the person or infer protected traits. Use keys: is_photographic_human_face, is_illustration_or_anime, is_heavily_filtered, is_face_clear_enough_to_score, confidence, source_image_ids. confidence must be from 0.0 to 1.0.
     """
 
     public static let visualAppeal = """
-    Return JSON only. Estimate generic visible facial presentation and photographic clarity, not identity, ethnicity, personality, income, or compatibility. Score 0 to 100. Use keys: visual_appeal_score, confidence, photo_quality_penalty, notes. Treat this as a model estimate, not an objective fact.
+    Return JSON only. Estimate generic visible facial presentation and photographic clarity, not identity, ethnicity, personality, income, or compatibility. Score 0 to 100. Use keys: visual_appeal_score, confidence, photo_quality_penalty, notes, source_image_ids. confidence must be from 0.0 to 1.0. Treat this as a model estimate, not an objective fact.
     """
 
     public static let lifestyle = """
-    Return JSON only. Score repeated, observable lifestyle presentation from 0 to 100 using visible evidence. Never claim actual wealth, family background, social class, or protected traits. One ambiguous logo or one hotel visit must not dominate. Use keys: lifestyle_affluence_signal, confidence, evidence (category, strength, source_image_id, explanation), actual_wealth. actual_wealth must be unknown.
+    Return JSON only. Score repeated, observable lifestyle presentation from 0 to 100 using visible evidence. Never claim actual wealth, family background, social class, or protected traits. One ambiguous logo or one hotel visit must not dominate. Use keys: lifestyle_affluence_signal, confidence, evidence (category, strength, source_image_id, explanation), actual_wealth. confidence must be from 0.0 to 1.0. Every evidence item must use one of the supplied source image IDs. actual_wealth must be unknown.
     """
+
+    public static func prompt(_ base: String, imageReferences: [AnalysisImageReference]) -> String {
+        guard !imageReferences.isEmpty else { return base }
+        let orderedIDs = imageReferences.map(\.sourceImageID).joined(separator: ", ")
+        return """
+        \(base)
+
+        Attached images are ordered and identified as: \(orderedIDs). Use only these exact IDs when citing source_image_id or source_image_ids.
+        """
+    }
 }
 
 public protocol VLMClientProtocol: Sendable {

@@ -226,6 +226,16 @@ private struct ProfileDetailView: View {
                                         Text("\(run.analysisType) · \(run.modelName)").font(.caption.bold())
                                         Text("Prompt \(run.promptVersion) · \(run.success ? "complete" : "failed")")
                                             .font(.caption2).foregroundStyle(.secondary)
+                                        if let references = run.requestTrace?.images, !references.isEmpty {
+                                            ScrollView(.horizontal) {
+                                                HStack(alignment: .top, spacing: 8) {
+                                                    ForEach(references) { reference in
+                                                        AnalysisEvidenceImage(run: run, reference: reference)
+                                                    }
+                                                }
+                                            }
+                                            .scrollIndicators(.hidden)
+                                        }
                                         if let response = run.responseJSON {
                                             Text(response).font(.caption2.monospaced()).textSelection(.enabled).lineLimit(8)
                                         }
@@ -257,6 +267,52 @@ private struct ProfileDetailView: View {
     }
     private func format(_ value: Double?) -> String { value.map { String(format: "%.1f", $0) } ?? "—" }
     private func format(_ value: Double) -> String { String(format: "%.1f", value) }
+}
+
+private struct AnalysisEvidenceImage: View {
+    let run: AnalysisRunRecord
+    let reference: AnalysisImageReference
+
+    private var evidence: [LifestyleEvidence] {
+        run.lifestyleEvidence(sourceImageID: reference.sourceImageID)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                NSWorkspace.shared.open(URL(fileURLWithPath: reference.filePath))
+            } label: {
+                Group {
+                    if let image = NSImage(contentsOfFile: reference.filePath) {
+                        Image(nsImage: image).resizable().scaledToFill()
+                    } else {
+                        ZStack {
+                            Color.secondary.opacity(0.08)
+                            Image(systemName: "photo.badge.exclamationmark").foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .frame(width: 112, height: 86)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+            .help("Open \(reference.sourceImageID)")
+
+            Text(reference.sourceImageID).font(.caption2.monospaced()).foregroundStyle(.secondary)
+            if evidence.isEmpty {
+                Text("Model input").font(.caption2).foregroundStyle(.tertiary)
+            } else {
+                ForEach(Array(evidence.enumerated()), id: \.offset) { _, item in
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("\(item.category) · \(item.strength)").font(.caption2.bold())
+                        Text(item.explanation).font(.caption2).lineLimit(4)
+                    }
+                }
+            }
+        }
+        .frame(width: 112, alignment: .leading)
+    }
 }
 
 struct LocalDataSettingsView: View {
