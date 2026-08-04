@@ -94,6 +94,40 @@ public struct GestureSafetyValidator: Sendable {
 public struct MomentViewerDismissPlanner: Sendable {
     public init() {}
 
+    public func closeAction(from marks: [CalibrationMark]) -> PlannedAction? {
+        guard let mark = marks.last(where: {
+            $0.context == .momentViewer && $0.kind == .safeBackClose
+        }) else {
+            return nil
+        }
+        return PlannedAction(
+            kind: .closeViewer,
+            point: mark.bounds.center,
+            requiredSafeRegion: mark.bounds,
+            rationale: "Tap the calibrated Moment viewer X"
+        )
+    }
+
+    public func chromeRevealAction(from marks: [CalibrationMark]) -> PlannedAction? {
+        guard let mark = marks.last(where: {
+            $0.context == .momentViewer && $0.kind == .safeMomentDismissGesture
+        }) else {
+            return nil
+        }
+        let region = NormalizedRect(
+            x: mark.bounds.center.x - 0.06,
+            y: mark.bounds.center.y - 0.05,
+            width: 0.12,
+            height: 0.10
+        )
+        return PlannedAction(
+            kind: .closeViewer,
+            point: region.center,
+            requiredSafeRegion: region,
+            rationale: "Toggle hidden Moment viewer chrome before tapping X"
+        )
+    }
+
     public func proposal(from marks: [CalibrationMark]) -> PlannedGesture? {
         guard let mark = marks.last(where: {
             $0.context == .momentViewer && $0.kind == .safeMomentDismissGesture
