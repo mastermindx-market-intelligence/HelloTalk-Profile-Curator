@@ -4,7 +4,7 @@ import Foundation
 public enum InputCommand: Hashable, Sendable {
     case click(NormalizedPoint)
     case drag(start: NormalizedPoint, end: NormalizedPoint)
-    case verticalScroll(lines: Int)
+    case verticalScroll(lines: Int, at: NormalizedPoint)
 }
 
 public protocol InputDriving: Sendable {
@@ -65,10 +65,32 @@ public actor CGEventInputDriver: InputDriving {
                 throw InputDriverError.eventCreationFailed
             }
             up.post(tap: .cghidEventTap)
-        case .verticalScroll(let lines):
-            guard let event = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: Int32(lines), wheel2: 0, wheel3: 0) else {
+        case .verticalScroll(let lines, let point):
+            let global = globalPoint(point, in: windowFrame)
+            guard let move = CGEvent(
+                mouseEventSource: nil,
+                mouseType: .mouseMoved,
+                mouseCursorPosition: global,
+                mouseButton: .left
+            ) else {
                 throw InputDriverError.eventCreationFailed
             }
+            move.post(tap: .cghidEventTap)
+            try await Task.sleep(for: .milliseconds(40))
+            // iPhone Mirroring ignores ordinary mouse-wheel line events. A bounded
+            // pixel scroll matches the keyboard/trackpad-style scrolling it accepts.
+            let pixelDelta = Int32(lines * 80)
+            guard let event = CGEvent(
+                scrollWheelEvent2Source: nil,
+                units: .pixel,
+                wheelCount: 1,
+                wheel1: pixelDelta,
+                wheel2: 0,
+                wheel3: 0
+            ) else {
+                throw InputDriverError.eventCreationFailed
+            }
+            event.location = global
             event.post(tap: .cghidEventTap)
         }
     }
@@ -140,6 +162,37 @@ public actor SafeInputExecutor {
         )
         guard decision.isAllowed else { return decision }
         try await driver.emit(.drag(start: gesture.start, end: gesture.end), in: windowFrame)
+        awaitingPostcondition = true
+        return decision
+    }
+
+    public func executeVerticalScroll(
+        action: PlannedAction,
+        lines: Int,
+        windowFrame: CGRect,
+        exclusions: [ExclusionZone],
+        emergencyStopActive: Bool,
+        sessionPauseReason: String?,
+        liveInputEnabled: Bool
+    ) async throws -> ActionSafetyDecision {
+        if awaitingPostcondition {
+            return ActionSafetyDecision(
+                isAllowed: false,
+                rejection: .sessionPaused("Previous action postcondition is unresolved")
+            )
+        }
+        guard action.kind == .verticalScroll else {
+            return ActionSafetyDecision(isAllowed: false, rejection: .outsideRequiredSafeRegion)
+        }
+        let decision = ActionSafetyValidator().validate(
+            action,
+            exclusionZones: exclusions,
+            emergencyStopActive: emergencyStopActive,
+            sessionPauseReason: sessionPauseReason,
+            liveInputEnabled: liveInputEnabled
+        )
+        guard decision.isAllowed else { return decision }
+        try await driver.emit(.verticalScroll(lines: lines, at: action.point), in: windowFrame)
         awaitingPostcondition = true
         return decision
     }

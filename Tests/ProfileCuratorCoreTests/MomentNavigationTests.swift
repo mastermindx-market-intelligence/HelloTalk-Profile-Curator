@@ -69,6 +69,37 @@ final class MomentNavigationTests: XCTestCase {
         XCTAssertEqual(targets.map(\.index), [0, 1, 2, 3, 4, 5, 6, 7])
     }
 
+    func testVerticalTimelineUsesFaceInsideDatedPostInsteadOfAdOrSocialControls() throws {
+        let mark = CalibrationMark(
+            context: .momentsFeed,
+            kind: .safeMomentThumbnailGrid,
+            bounds: NormalizedRect(x: 0.057, y: 0.20, width: 0.78, height: 0.66),
+            confirmed: true
+        )
+        let image = try makeMomentGridImage(rows: 2, finalRowColumns: 3)
+        let face = DetectedFace(
+            bounds: NormalizedRect(x: 0.18, y: 0.69, width: 0.18, height: 0.16),
+            captureQuality: 0.8,
+            hasLandmarks: true
+        )
+        let observations = [
+            OCRObservation(text: "Install", confidence: 0.99, bounds: NormalizedRect(x: 0.80, y: 0.30, width: 0.12, height: 0.03)),
+            OCRObservation(text: "28/11/2025", confidence: 0.97, bounds: NormalizedRect(x: 0.76, y: 0.57, width: 0.18, height: 0.025))
+        ]
+
+        let targets = MomentThumbnailTargetDetector().targets(
+            in: image,
+            from: [mark],
+            observations: observations,
+            faces: [face]
+        )
+
+        XCTAssertEqual(targets.count, 1)
+        XCTAssertEqual(targets[0].index, 100)
+        XCTAssertEqual(targets[0].point, face.bounds.center)
+        XCTAssertTrue(targets[0].safePhotoRegion.contains(targets[0].point))
+    }
+
     func testLaterAlignedRowsBeatSingleThreeColumnDistractor() throws {
         let mark = CalibrationMark(
             context: .momentsFeed,

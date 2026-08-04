@@ -24,6 +24,11 @@
     <string>15.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
     <key>NSScreenCaptureUsageDescription</key>
     <string>Profile Curator captures only the selected iPhone Mirroring window for local inspection.</string>
     <key>NSHumanReadableCopyright</key>

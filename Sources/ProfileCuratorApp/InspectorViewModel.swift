@@ -2,8 +2,54 @@ import AppKit
 import Foundation
 import ProfileCuratorCore
 
+private enum AutomationPhase: String {
+    case acquireSeed = "Finding a profile"
+    case scanProfile = "Reading profile"
+    case returnToTop = "Returning to profile header"
+    case openPFP = "Capturing profile photo"
+    case openMoments = "Opening Moments"
+    case scanMoments = "Scanning Moments"
+    case exitMoments = "Finishing media collection"
+    case seekSuggestions = "Finding similar profiles"
+    case openRecommendation = "Opening next similar profile"
+}
+
+private enum AutomationRuntimeError: LocalizedError {
+    case permissionsMissing
+    case mirroringWindowMissing
+    case calibrationMissing(String)
+    case actionBlocked(String)
+    case postconditionFailed(String)
+    case unknownState(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .permissionsMissing:
+            "Screen Recording and Accessibility must both be enabled."
+        case .mirroringWindowMissing:
+            "No visible iPhone Mirroring window was found."
+        case .calibrationMissing(let label):
+            "Required safe calibration is missing: \(label)."
+        case .actionBlocked(let reason):
+            "Safety gate blocked the action: \(reason)."
+        case .postconditionFailed(let reason):
+            "The app could not verify the last navigation action: \(reason)."
+        case .unknownState(let reason):
+            "Collection paused on an unrecognized screen: \(reason)."
+        }
+    }
+}
+
 @MainActor
 final class InspectorViewModel: ObservableObject {
+    enum AutomationRunState: String {
+        case idle = "Ready"
+        case running = "Running"
+        case paused = "Paused"
+        case stopped = "Stopped"
+        case completed = "Completed"
+    }
+
     @Published var fixtureImage: NSImage?
     @Published var fixtureURL: URL?
     @Published var analysis: FixtureAnalysis?
@@ -37,6 +83,10 @@ final class InspectorViewModel: ObservableObject {
     @Published var recommendationLedger = RecommendationTraversalLedger()
     @Published var pendingGraphDecision: RecommendationTraversalDecision?
     @Published var collectionStatus = "No verified profile checkpoint"
+    @Published var automationRunState: AutomationRunState = .idle
+    @Published var automationStatus = "Ready to collect automatically"
+    @Published var automationActionCount = 0
+    @Published var automationProfileCount = 0
 
     let previewExclusions = DefaultInspectorCalibration.previewExclusions
 
@@ -56,6 +106,7 @@ final class InspectorViewModel: ObservableObject {
     private let momentThumbnailDetector = MomentThumbnailTargetDetector()
     private let momentDismissPlanner = MomentViewerDismissPlanner()
     private let socialControlDetector = SocialControlExclusionDetector()
+    private let liveInputExecutor = SafeInputExecutor(driver: CGEventInputDriver())
     private let eventStore: NavigationEventLogStore?
     private var currentCGImage: CGImage?
     private var lastProfileUsername: String?
@@ -65,6 +116,18 @@ final class InspectorViewModel: ObservableObject {
     private let mediaStore: MediaStore?
     private var collectedProfileID: String?
     private var profileAccumulator = ProfileObservationAccumulator()
+    private var automationTask: Task<Void, Never>?
+    private var qwenWorkerTask: Task<Void, Never>?
+    private var automationPhase: AutomationPhase = .acquireSeed
+    private var automationAboutMeSelected = false
+    private var automationScrollAttempts = 0
+    private var automationNoProgressCount = 0
+    private var automationUnknownCount = 0
+    private var automationMomentKeys: Set<String> = []
+    private var automationPendingMomentKey: String?
+    private var automationCollectedUsername: String?
+    private var automationLastFingerprint: String?
+    private var automationWindowFrame: CGRect?
 
     init() {
         eventStore = try? NavigationEventLogStore.defaultStore()
@@ -127,7 +190,8 @@ final class InspectorViewModel: ObservableObject {
         return momentThumbnailDetector.targets(
             in: currentCGImage,
             from: calibrationMarks,
-            observations: analysis.text
+            observations: analysis.text,
+            faces: analysis.faces
         )
     }
 
@@ -177,7 +241,10 @@ final class InspectorViewModel: ObservableObject {
 
     var sessionStatus: String {
         if let reason = sessionState.pauseReason { return "Paused · \(reason.summary)" }
-        return "Dry run · \(sessionState.proposalCount)/\(sessionPolicy.maximumProposals) proposals"
+        if automationRunState == .running {
+            return "Live automatic · \(sessionState.proposalCount)/\(sessionPolicy.maximumProposals) actions"
+        }
+        return "Ready · \(sessionState.proposalCount)/\(sessionPolicy.maximumProposals) actions"
     }
 
     private var activeCalibrationContext: CalibrationContext {
@@ -200,6 +267,641 @@ final class InspectorViewModel: ObservableObject {
 
     var canCheckpointProfile: Bool {
         profileEligibilityDecision.isCollectible && currentCGImage != nil && profileRepository != nil
+    }
+
+    func startAutonomousCollection() {
+        guard automationTask == nil else { return }
+        refreshPermissions()
+        guard permissionStatus.screenRecordingGranted, permissionStatus.accessibilityGranted else {
+            automationRunState = .paused
+            automationStatus = AutomationRuntimeError.permissionsMissing.localizedDescription
+            errorMessage = automationStatus
+            return
+        }
+
+        if calibrationMarks.isEmpty {
+            if let saved = try? CalibrationStore.defaultStore().load() {
+                calibrationMarks = saved.marks
+                calibrationStatus = "Loaded saved calibration for automatic collection"
+            } else {
+                calibrationMarks = ObservedHelloTalkCalibration.marks
+                calibrationStatus = "Loaded supervised 2026-08-03 baseline"
+            }
+        }
+
+        sessionState = NavigationSessionState()
+        automationPhase = .acquireSeed
+        automationAboutMeSelected = false
+        automationScrollAttempts = 0
+        automationNoProgressCount = 0
+        automationUnknownCount = 0
+        automationMomentKeys = []
+        automationPendingMomentKey = nil
+        let checkpoint = try? CollectionCheckpointStore.defaultStore().load()
+        automationCollectedUsername = checkpoint?.currentUsername
+        automationLastFingerprint = nil
+        automationWindowFrame = nil
+        collectedProfileID = checkpoint?.currentProfileID
+        windowGeometryGuard = nil
+        errorMessage = nil
+        automationRunState = .running
+        automationStatus = "Starting automatic collection…"
+        recordEvent(.sessionReset, summary: "Automatic collection started")
+
+        automationTask = Task { [weak self] in
+            await self?.runAutonomousCollection()
+        }
+        startQwenWorkerIfNeeded()
+    }
+
+    func pauseAutonomousCollection() {
+        guard automationRunState == .running else { return }
+        automationTask?.cancel()
+        automationTask = nil
+        automationRunState = .paused
+        automationStatus = "Paused by user · tap Resume to continue"
+        recordEvent(.sessionPaused, summary: automationStatus)
+    }
+
+    func resumeAutonomousCollection() {
+        guard automationRunState == .paused,
+              sessionState.pauseReason != .emergencyStop else { return }
+        errorMessage = nil
+        automationRunState = .running
+        automationStatus = "Resuming · \(automationPhase.rawValue)"
+        automationTask = Task { [weak self] in
+            await self?.runAutonomousCollection()
+        }
+    }
+
+    func stopAutonomousCollection() {
+        engageEmergencyStop()
+    }
+
+    private func runAutonomousCollection() async {
+        do {
+            try await prepareAutomationWindow()
+            while !Task.isCancelled && automationRunState == .running {
+                let snapshot = try await captureAutomationFrame()
+                try Task.checkCancellation()
+                try await handleAutomationSnapshot(snapshot)
+                try await Task.sleep(for: .milliseconds(250))
+            }
+        } catch is CancellationError {
+            // Pause and Stop deliberately cancel the task. Their button handlers own status text.
+        } catch {
+            guard automationRunState == .running else {
+                automationTask = nil
+                return
+            }
+            automationRunState = .paused
+            automationStatus = "Paused safely · \(error.localizedDescription)"
+            errorMessage = error.localizedDescription
+            recordEvent(.sessionPaused, summary: automationStatus)
+        }
+        automationTask = nil
+    }
+
+    private func prepareAutomationWindow() async throws {
+        if selectedWindowID == nil {
+            windowSearchStatus = "Locating iPhone Mirroring automatically…"
+            let candidates = try await MirroringWindowLocator().locateCandidates()
+            mirroringWindows = candidates
+            selectedWindowID = candidates.first?.id
+        }
+        guard selectedWindowID != nil else { throw AutomationRuntimeError.mirroringWindowMissing }
+        try await focusMirroringApp()
+        windowSearchStatus = "Automatic collector attached to iPhone Mirroring"
+    }
+
+    private func focusMirroringApp() async throws {
+        guard let mirroringApp = NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.apple.ScreenContinuity"
+        ).first else {
+            throw AutomationRuntimeError.mirroringWindowMissing
+        }
+        mirroringApp.activate()
+        try await Task.sleep(for: .milliseconds(300))
+    }
+
+    @discardableResult
+    private func captureAutomationFrame() async throws -> ObservationSnapshot {
+        guard let selectedWindowID else { throw AutomationRuntimeError.mirroringWindowMissing }
+        let frame = try await WindowCaptureService().capture(windowID: selectedWindowID)
+        try validateWindowGeometry(frame)
+        automationWindowFrame = frame.windowFrame
+        let result = try analyzer.analyze(frame.image)
+        let image = NSImage(
+            cgImage: frame.image,
+            size: NSSize(width: frame.image.width, height: frame.image.height)
+        )
+        acceptAnalysis(
+            result,
+            image: image,
+            cgImage: frame.image,
+            fixtureURL: nil,
+            capturedAt: frame.capturedAt
+        )
+        guard let observationSnapshot else {
+            throw AutomationRuntimeError.unknownState("No analyzable window snapshot")
+        }
+        windowSearchStatus = "Live · captured \(observationSnapshot.screen.kind.rawValue)"
+        return observationSnapshot
+    }
+
+    private func handleAutomationSnapshot(_ snapshot: ObservationSnapshot) async throws {
+        if sessionState.isPaused {
+            throw AutomationRuntimeError.actionBlocked(sessionState.pauseReason?.summary ?? "session guard")
+        }
+
+        automationStatus = "\(automationPhase.rawValue) · \(snapshot.screen.kind.rawValue) · \(automationProfileCount) saved"
+        if snapshot.screen.kind == .unknown {
+            try await recoverFromUnknownScreen(snapshot)
+            return
+        }
+        automationUnknownCount = 0
+
+        switch snapshot.screen.kind {
+        case .connectFeed:
+            automationPhase = .acquireSeed
+            let action = try calibratedAction(
+                context: .connectFeed,
+                kind: .safeRecommendationCard,
+                actionKind: .openRecommendationCard,
+                rationale: "Open the visible seed profile photo"
+            )
+            _ = try await performClick(action, context: .connectFeed, expecting: .profilePageDetected)
+            prepareForNewProfile()
+            automationPhase = .scanProfile
+
+        case .customSearch:
+            throw AutomationRuntimeError.unknownState("Custom Search is a seed fallback; open one result or return to Connect")
+
+        case .profileTop:
+            try await handleProfileTop(snapshot)
+
+        case .profilePersonalInfo:
+            try await handlePersonalInfo()
+
+        case .suggestedProfilesGallery:
+            if automationPhase != .openRecommendation {
+                automationScrollAttempts = 0
+                automationNoProgressCount = 0
+            }
+            automationPhase = .openRecommendation
+            try await openNextRecommendation(snapshot)
+
+        case .pfpViewer:
+            guard automationPhase == .openPFP else {
+                throw AutomationRuntimeError.unknownState("Unexpected profile-photo viewer")
+            }
+            checkpointViewerPhoto()
+            let close = try calibratedAction(
+                context: .pfpViewer,
+                kind: .safeBackClose,
+                actionKind: .closeViewer,
+                rationale: "Close the profile-photo viewer"
+            )
+            _ = try await performClick(close, context: .pfpViewer, expecting: .profilePageDetected)
+            automationPhase = .openMoments
+
+        case .momentsFeed:
+            if automationPhase == .openMoments { automationPhase = .scanMoments }
+            try await scanVisibleMoments(snapshot)
+
+        case .momentViewer:
+            if automationPhase == .acquireSeed, currentCollectedProfile() != nil {
+                automationPhase = .scanMoments
+            }
+            guard automationPhase == .scanMoments else {
+                throw AutomationRuntimeError.unknownState("Unexpected Moment viewer")
+            }
+            checkpointViewerPhoto()
+            if let key = automationPendingMomentKey { automationMomentKeys.insert(key) }
+            automationPendingMomentKey = nil
+            try await dismissMomentViewer(snapshot)
+
+        case .momentDetails:
+            let back = fallbackBackAction(rationale: "Return from Moment details to the Moments feed")
+            _ = try await performClick(back, context: .momentsFeed, expecting: .contentHashChanged(previous: snapshot.fingerprint))
+            automationPhase = .scanMoments
+
+        case .unknown:
+            break
+        }
+    }
+
+    private func handleProfileTop(_ snapshot: ObservationSnapshot) async throws {
+        switch automationPhase {
+        case .returnToTop:
+            automationPhase = .openPFP
+            fallthrough
+        case .openPFP:
+            let avatar = try calibratedAction(
+                context: .profile,
+                kind: .safeAvatar,
+                actionKind: .openAvatar,
+                rationale: "Open the verified profile photo"
+            )
+            _ = try await performClick(avatar, context: .profile, expecting: .viewerDetected)
+
+        case .openMoments:
+            let moments = try calibratedAction(
+                context: .profile,
+                kind: .safeMoments,
+                actionKind: .selectMoments,
+                rationale: "Open the verified profile's Moments tab"
+            )
+            _ = try await performClick(moments, context: .profile, expecting: .contentHashChanged(previous: snapshot.fingerprint))
+            automationPhase = .scanMoments
+
+        case .exitMoments, .seekSuggestions, .openRecommendation:
+            automationPhase = .seekSuggestions
+            automationScrollAttempts = 0
+            _ = try await performVerticalScroll(lines: -7, context: .profile, previousFingerprint: snapshot.fingerprint)
+
+        default:
+            automationPhase = .scanProfile
+            if !automationAboutMeSelected {
+                let about = try calibratedAction(
+                    context: .profile,
+                    kind: .safeAboutMe,
+                    actionKind: .selectAboutMe,
+                    rationale: "Select About Me before reading Personal Info"
+                )
+                _ = try await performClick(about, context: .profile, expecting: .selectedTab("About Me"))
+                automationAboutMeSelected = true
+            } else {
+                automationScrollAttempts += 1
+                guard automationScrollAttempts <= 10 else {
+                    throw AutomationRuntimeError.unknownState("Personal Info was not found after 10 bounded scrolls")
+                }
+                _ = try await performVerticalScroll(lines: -7, context: .profile, previousFingerprint: snapshot.fingerprint)
+            }
+        }
+    }
+
+    private func handlePersonalInfo() async throws {
+        switch automationPhase {
+        case .returnToTop, .openPFP:
+            automationPhase = .returnToTop
+            _ = try await performVerticalScroll(lines: 10, context: .profile, previousFingerprint: observationSnapshot?.fingerprint)
+
+        case .seekSuggestions, .exitMoments, .openRecommendation:
+            automationPhase = .seekSuggestions
+            automationScrollAttempts += 1
+            guard automationScrollAttempts <= 14 else {
+                throw AutomationRuntimeError.unknownState("Suggested for You was not found after 14 bounded scrolls")
+            }
+            _ = try await performVerticalScroll(lines: -7, context: .profile, previousFingerprint: observationSnapshot?.fingerprint)
+
+        default:
+            switch profileEligibilityDecision {
+            case .collectPrimary, .collectSecondary:
+                checkpointVerifiedProfile()
+                guard collectedProfileID != nil, let username = profileAccumulator.username else {
+                    throw AutomationRuntimeError.unknownState(collectionStatus)
+                }
+                automationCollectedUsername = username
+                automationPhase = .returnToTop
+                automationScrollAttempts = 0
+                _ = try await performVerticalScroll(lines: 12, context: .profile, previousFingerprint: observationSnapshot?.fingerprint)
+            case .routingOnly(let reason):
+                automationStatus = "Routing past ineligible profile · \(reason)"
+                automationPhase = .seekSuggestions
+                automationScrollAttempts = 0
+                _ = try await performVerticalScroll(lines: -7, context: .profile, previousFingerprint: observationSnapshot?.fingerprint)
+            }
+        }
+    }
+
+    private func scanVisibleMoments(_ snapshot: ObservationSnapshot) async throws {
+        if scannedMomentCount() >= CollectionLimits.hardenedDefault.maximumScannedPhotos {
+            try await finishMediaCollection(snapshot)
+            return
+        }
+
+        let available = momentThumbnailTargets.first { target in
+            !automationMomentKeys.contains(momentKey(target, fingerprint: snapshot.fingerprint))
+        }
+        if let target = available {
+            let key = momentKey(target, fingerprint: snapshot.fingerprint)
+            automationPendingMomentKey = key
+            proposedMomentThumbnailTarget = target
+            _ = try await performClick(target.plannedAction, context: .momentsFeed, expecting: .viewerDetected)
+            automationNoProgressCount = 0
+            return
+        }
+
+        _ = try await performVerticalScroll(
+            lines: -6,
+            context: .momentsFeed,
+            previousFingerprint: snapshot.fingerprint,
+            unchangedIsAllowed: true
+        )
+        automationNoProgressCount += 1
+        if automationNoProgressCount >= 5 {
+            try await finishMediaCollection(snapshot)
+        }
+    }
+
+    private func finishMediaCollection(_ snapshot: ObservationSnapshot) async throws {
+        finalizeCurrentProfileMedia()
+        recordEvent(.transition, summary: collectionStatus)
+        queueCurrentProfileAnalysis()
+        recordEvent(.transition, summary: collectionStatus)
+        startQwenWorkerIfNeeded()
+        automationProfileCount += 1
+        automationPhase = .exitMoments
+        automationNoProgressCount = 0
+        let back = fallbackBackAction(rationale: "Return to the profile after finishing Moments")
+        _ = try await performClick(back, context: .momentsFeed, expecting: .contentHashChanged(previous: snapshot.fingerprint))
+        automationPhase = .seekSuggestions
+        automationScrollAttempts = 0
+    }
+
+    private func openNextRecommendation(_ snapshot: ObservationSnapshot) async throws {
+        guard let previousUsername = profileAccumulator.username
+                ?? observationSnapshot?.username
+                ?? automationCollectedUsername
+                ?? currentCollectedProfile()?.usernameNormalized else {
+            throw AutomationRuntimeError.unknownState("The current username is unavailable for identity verification")
+        }
+        let proposals = visibleRecommendationTargets.compactMap { target -> (VisibleRecommendationTarget, VisibleRecommendationCandidate, RecommendationTraversalDecision)? in
+            let candidate = VisibleRecommendationCandidate(
+                profileKey: target.profileKey,
+                displayedAge: target.displayedAge,
+                genderHint: .unknown
+            )
+            let decision = recommendationLedger.decision(for: candidate)
+            return decision.isOpenProposal ? (target, candidate, decision) : nil
+        }
+        guard let proposal = proposals.first(where: { $0.0.displayedAge.map { (18...21).contains($0) } == true })
+                ?? proposals.first else {
+            if automationScrollAttempts < 3 {
+                automationScrollAttempts += 1
+                _ = try await performVerticalScroll(
+                    lines: -4,
+                    context: .profile,
+                    previousFingerprint: snapshot.fingerprint,
+                    unchangedIsAllowed: true
+                )
+                return
+            }
+            automationRunState = .completed
+            automationStatus = "Automatic session complete · visible similar-profile graph exhausted"
+            recordEvent(.transition, summary: automationStatus)
+            automationTask?.cancel()
+            return
+        }
+
+        let (target, candidate, decision) = proposal
+        proposedVisibleCardTarget = target
+        let next = try await performClick(
+            target.plannedAction,
+            context: .profile,
+            expecting: .profileIdentityChanged(previousUsername: previousUsername)
+        )
+        recommendationLedger.recordOpened(candidate, decision: decision)
+        if let username = next.username { recommendationLedger.recordVerifiedProfileKey(username) }
+        prepareForNewProfile()
+        automationPhase = .scanProfile
+        automationScrollAttempts = 0
+    }
+
+    private func recoverFromUnknownScreen(_ snapshot: ObservationSnapshot) async throws {
+        automationUnknownCount += 1
+        guard automationUnknownCount <= 4 else {
+            throw AutomationRuntimeError.unknownState("Four consecutive captures could not be classified")
+        }
+
+        switch automationPhase {
+        case .scanProfile, .seekSuggestions, .exitMoments, .openRecommendation:
+            automationScrollAttempts += 1
+            guard automationScrollAttempts <= 14 else {
+                throw AutomationRuntimeError.unknownState("Bounded profile scan exhausted")
+            }
+            _ = try await performVerticalScroll(
+                lines: -7,
+                context: .profile,
+                previousFingerprint: snapshot.fingerprint,
+                unchangedIsAllowed: true
+            )
+        case .returnToTop, .openPFP:
+            _ = try await performVerticalScroll(
+                lines: 10,
+                context: .profile,
+                previousFingerprint: snapshot.fingerprint,
+                unchangedIsAllowed: true
+            )
+        case .scanMoments:
+            _ = try await performVerticalScroll(
+                lines: -6,
+                context: .momentsFeed,
+                previousFingerprint: snapshot.fingerprint,
+                unchangedIsAllowed: true
+            )
+            automationNoProgressCount += 1
+            if automationNoProgressCount >= 5 { try await finishMediaCollection(snapshot) }
+        default:
+            throw AutomationRuntimeError.unknownState("Expected \(automationPhase.rawValue)")
+        }
+    }
+
+    private func calibratedAction(
+        context: CalibrationContext,
+        kind: CalibrationMarkKind,
+        actionKind: PlannedActionKind,
+        rationale: String
+    ) throws -> PlannedAction {
+        guard let mark = calibrationMarks.last(where: { $0.context == context && $0.kind == kind }) else {
+            throw AutomationRuntimeError.calibrationMissing("\(context.displayName) / \(kind.displayName)")
+        }
+        return PlannedAction(
+            kind: actionKind,
+            point: mark.bounds.center,
+            requiredSafeRegion: mark.bounds,
+            rationale: rationale
+        )
+    }
+
+    private func fallbackBackAction(rationale: String) -> PlannedAction {
+        let bounds = calibrationMarks.last(where: {
+            $0.context == .profile && $0.kind == .safeBackClose
+        })?.bounds ?? NormalizedRect(x: 0.057, y: 0.103, width: 0.062, height: 0.04)
+        return PlannedAction(kind: .back, point: bounds.center, requiredSafeRegion: bounds, rationale: rationale)
+    }
+
+    @discardableResult
+    private func performClick(
+        _ action: PlannedAction,
+        context: CalibrationContext,
+        expecting condition: VisiblePostcondition
+    ) async throws -> ObservationSnapshot {
+        guard let automationWindowFrame else { throw AutomationRuntimeError.mirroringWindowMissing }
+        try await focusMirroringApp()
+        sessionState.recordProposal(policy: sessionPolicy)
+        let decision = try await liveInputExecutor.executeClick(
+            action: action,
+            windowFrame: automationWindowFrame,
+            exclusions: exclusionZones(for: context) + dynamicSocialExclusions,
+            emergencyStopActive: sessionState.pauseReason == .emergencyStop,
+            sessionPauseReason: sessionState.pauseReason?.summary,
+            liveInputEnabled: true
+        )
+        guard decision.isAllowed else {
+            await liveInputExecutor.resolvePostcondition(passed: false)
+            throw AutomationRuntimeError.actionBlocked(decision.rejection.map(actionRejectionDescription) ?? "unknown rejection")
+        }
+        automationActionCount += 1
+        recordEvent(.safetyDecision, summary: "Executed \(action.kind.rawValue) · \(action.rationale)")
+
+        var lastResult: PostconditionResult?
+        for delay in [800, 650, 650] {
+            try await Task.sleep(for: .milliseconds(delay))
+            let snapshot = try await captureAutomationFrame()
+            let result = postconditionEvaluator.evaluate(condition, against: snapshot)
+            lastPostconditionResult = result
+            lastResult = result
+            if result.status == .passed {
+                await liveInputExecutor.resolvePostcondition(passed: true)
+                recordEvent(.postcondition, summary: "passed · \(result.summary)")
+                return snapshot
+            }
+        }
+        await liveInputExecutor.resolvePostcondition(passed: false)
+        throw AutomationRuntimeError.postconditionFailed(lastResult?.summary ?? "No verification frame")
+    }
+
+    @discardableResult
+    private func performVerticalScroll(
+        lines: Int,
+        context: CalibrationContext,
+        previousFingerprint: String?,
+        unchangedIsAllowed: Bool = false
+    ) async throws -> Bool {
+        guard let automationWindowFrame else { throw AutomationRuntimeError.mirroringWindowMissing }
+        try await focusMirroringApp()
+        let safeRegion = NormalizedRect(x: 0.28, y: 0.30, width: 0.44, height: 0.40)
+        let action = PlannedAction(
+            kind: .verticalScroll,
+            point: safeRegion.center,
+            requiredSafeRegion: safeRegion,
+            rationale: lines < 0 ? "Discrete vertical scroll down" : "Discrete vertical scroll up"
+        )
+        sessionState.recordProposal(policy: sessionPolicy)
+        let decision = try await liveInputExecutor.executeVerticalScroll(
+            action: action,
+            lines: lines,
+            windowFrame: automationWindowFrame,
+            exclusions: exclusionZones(for: context) + dynamicSocialExclusions,
+            emergencyStopActive: sessionState.pauseReason == .emergencyStop,
+            sessionPauseReason: sessionState.pauseReason?.summary,
+            liveInputEnabled: true
+        )
+        guard decision.isAllowed else {
+            await liveInputExecutor.resolvePostcondition(passed: false)
+            throw AutomationRuntimeError.actionBlocked(decision.rejection.map(actionRejectionDescription) ?? "unknown rejection")
+        }
+        automationActionCount += 1
+        try await Task.sleep(for: .milliseconds(700))
+        let next = try await captureAutomationFrame()
+        let changed = previousFingerprint.map { $0 != next.fingerprint } ?? true
+        await liveInputExecutor.resolvePostcondition(passed: changed || unchangedIsAllowed)
+        recordEvent(.postcondition, summary: changed ? "passed · content changed after scroll" : "unchanged · bounded feed edge")
+        if !changed && !unchangedIsAllowed {
+            throw AutomationRuntimeError.postconditionFailed("The vertical scroll did not change visible content")
+        }
+        return changed
+    }
+
+    private func dismissMomentViewer(_ snapshot: ObservationSnapshot) async throws {
+        guard let automationWindowFrame,
+              let gesture = momentDismissPlanner.proposal(from: calibrationMarks) else {
+            throw AutomationRuntimeError.calibrationMissing("Moment viewer / dismiss gesture")
+        }
+        let mark = calibrationMarks.last {
+            $0.context == .momentViewer && $0.kind == .safeMomentDismissGesture
+        }
+        let required: Set<CalibrationMarkKind> = [.excludeLike]
+        let confirmed = Set(calibrationMarks.filter {
+            $0.context == .momentViewer && $0.confirmed && $0.kind.isExclusion
+        }.map(\.kind))
+        for attempt in 0..<2 {
+            try await focusMirroringApp()
+            sessionState.recordProposal(policy: sessionPolicy)
+            let decision = try await liveInputExecutor.executeGesture(
+                gesture: gesture,
+                windowFrame: automationWindowFrame,
+                exclusions: exclusionZones(for: .momentViewer) + dynamicSocialExclusions,
+                calibrationConfirmed: mark?.confirmed == true && required.isSubset(of: confirmed),
+                emergencyStopActive: sessionState.pauseReason == .emergencyStop,
+                sessionPauseReason: sessionState.pauseReason?.summary,
+                liveInputEnabled: true
+            )
+            guard decision.isAllowed else {
+                await liveInputExecutor.resolvePostcondition(passed: false)
+                throw AutomationRuntimeError.actionBlocked(decision.rejection.map { gestureRejectionDescription($0) } ?? "unknown rejection")
+            }
+            automationActionCount += 1
+            try await Task.sleep(for: .milliseconds(attempt == 0 ? 750 : 950))
+            let next = try await captureAutomationFrame()
+            let changed = next.screen.kind != .momentViewer
+            await liveInputExecutor.resolvePostcondition(passed: changed)
+            if changed {
+                automationPhase = .scanMoments
+                return
+            }
+            recordEvent(.postcondition, summary: "retry · Moment viewer remained open after dismiss gesture")
+            try await Task.sleep(for: .milliseconds(250))
+        }
+        throw AutomationRuntimeError.postconditionFailed("Moment viewer did not dismiss after two calibrated attempts")
+    }
+
+    private func momentKey(_ target: MomentThumbnailTarget, fingerprint: String) -> String {
+        if target.index >= 100,
+           let date = analysis?.text.first(where: {
+               $0.text.range(
+                   of: #"\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b"#,
+                   options: .regularExpression
+               ) != nil
+           }) {
+            return "timeline|\(date.text.lowercased())"
+        }
+        return "\(fingerprint)|\(target.index)"
+    }
+
+    private func scannedMomentCount() -> Int {
+        guard let profile = currentCollectedProfile() else { return 0 }
+        return (try? profileRepository?.media(profileID: profile.id).filter {
+            $0.typedKind == .moment
+        }.count) ?? 0
+    }
+
+    private func prepareForNewProfile() {
+        collectedProfileID = nil
+        automationCollectedUsername = nil
+        automationAboutMeSelected = false
+        automationScrollAttempts = 0
+        automationNoProgressCount = 0
+        automationUnknownCount = 0
+        automationMomentKeys = []
+        automationPendingMomentKey = nil
+    }
+
+    private func startQwenWorkerIfNeeded() {
+        guard qwenWorkerTask == nil,
+              let profileRepository,
+              let configuration = try? VLMConfigurationStore.defaultStore().load() else { return }
+        qwenWorkerTask = Task { [weak self] in
+            let processor = AnalysisQueueProcessor(
+                repository: profileRepository,
+                client: OllamaVLMClient(configuration: configuration),
+                configuration: configuration
+            )
+            while !Task.isCancelled, await processor.processNext() {}
+            await MainActor.run { self?.qwenWorkerTask = nil }
+        }
     }
 
     func chooseFixture() {
@@ -503,8 +1205,14 @@ final class InspectorViewModel: ObservableObject {
     }
 
     func engageEmergencyStop() {
+        automationTask?.cancel()
+        automationTask = nil
+        qwenWorkerTask?.cancel()
+        qwenWorkerTask = nil
         sessionState.engageEmergencyStop()
         navigationState = .emergencyStopped
+        automationRunState = .stopped
+        automationStatus = "STOPPED · all automatic input is blocked"
         galleryGestureStatus = "Blocked · emergency stop is latched"
         recordEvent(.emergencyStop, summary: sessionState.pauseReason?.summary ?? "Emergency stop")
     }
@@ -570,8 +1278,9 @@ final class InspectorViewModel: ObservableObject {
         do {
             let existing = try profileRepository.media(profileID: profile.id)
             let scannedPhotos = existing.filter { $0.typedKind == .pfp || $0.typedKind == .moment }
-            guard scannedPhotos.count < CollectionLimits.hardenedDefault.maximumScannedPhotos else {
-                collectionStatus = "Blocked · 20-photo scan limit reached"
+            let scannedMoments = existing.filter { $0.typedKind == .moment }
+            guard kind != .moment || scannedMoments.count < CollectionLimits.hardenedDefault.maximumScannedPhotos else {
+                collectionStatus = "Blocked · 20-Moment scan limit reached"
                 return
             }
             let retainedPhotos = scannedPhotos.filter(\.retained)
@@ -600,7 +1309,8 @@ final class InspectorViewModel: ObservableObject {
                 return
             }
             try saveCollectionCheckpoint(profileID: profile.id)
-            collectionStatus = "Saved visible \(kind.rawValue) frame as PNG \(scannedPhotos.count + 1)/20 · retained \(shouldRetain ? retainedPhotos.count + 1 : retainedPhotos.count)/10"
+            let scanLabel = kind == .moment ? "Moment \(scannedMoments.count + 1)/20" : "PFP"
+            collectionStatus = "Saved visible \(kind.rawValue) frame as PNG · \(scanLabel) · retained \(shouldRetain ? retainedPhotos.count + 1 : retainedPhotos.count)/10"
         } catch {
             collectionStatus = "Photo checkpoint failed · \(error.localizedDescription)"
         }
@@ -699,6 +1409,8 @@ final class InspectorViewModel: ObservableObject {
     }
 
     func resetDryRunSession() {
+        automationTask?.cancel()
+        automationTask = nil
         sessionState = NavigationSessionState()
         pendingPostcondition = nil
         lastPostconditionResult = nil
@@ -713,7 +1425,9 @@ final class InspectorViewModel: ObservableObject {
         pendingGraphDecision = nil
         navigationState = screenClassification?.navigationState ?? .identifyCurrentScreen
         windowGeometryGuard = nil
-        recordEvent(.sessionReset, summary: "Started a new dry-run session")
+        automationRunState = .idle
+        automationStatus = "Ready to collect automatically"
+        recordEvent(.sessionReset, summary: "Started a new session")
     }
 
     func addCalibrationMark(bounds: NormalizedRect) {
@@ -837,7 +1551,17 @@ final class InspectorViewModel: ObservableObject {
             location: locationNormalizer.normalize(result.text.map(\.text).joined(separator: " · "))
         )
 
-        sessionState.recordScreen(snapshot.screen.kind, policy: sessionPolicy, now: capturedAt)
+        let automationCanTraverseUnknown = automationRunState == .running && [
+            AutomationPhase.scanProfile,
+            .returnToTop,
+            .scanMoments,
+            .exitMoments,
+            .seekSuggestions,
+            .openRecommendation
+        ].contains(automationPhase)
+        if snapshot.screen.kind != .unknown || !automationCanTraverseUnknown {
+            sessionState.recordScreen(snapshot.screen.kind, policy: sessionPolicy, now: capturedAt)
+        }
         if let username = snapshot.username, username != lastProfileUsername,
            [.profileTop, .profilePersonalInfo, .suggestedProfilesGallery, .momentsFeed].contains(snapshot.screen.kind) {
             sessionState.recordProfileVisit(policy: sessionPolicy, now: capturedAt)
@@ -909,9 +1633,15 @@ final class InspectorViewModel: ObservableObject {
         guard let profileRepository else { return }
         let media = try profileRepository.media(profileID: profileID)
         let photos = media.filter { $0.typedKind == .pfp || $0.typedKind == .moment }
+        let checkpointUsername: String?
+        if let observedUsername = profileAccumulator.username {
+            checkpointUsername = observedUsername
+        } else {
+            checkpointUsername = try profileRepository.profile(id: profileID)?.usernameNormalized
+        }
         let checkpoint = CollectionCheckpoint(
             navigation: NavigationSnapshot(state: navigationState, pendingPostcondition: pendingPostcondition),
-            currentUsername: profileAccumulator.username,
+            currentUsername: checkpointUsername,
             currentProfileID: profileID,
             scannedPhotoCount: photos.count,
             retainedPhotoCount: photos.filter(\.retained).count,

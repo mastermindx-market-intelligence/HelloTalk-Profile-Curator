@@ -86,6 +86,26 @@ final class NavigationStateDetectorTests: XCTestCase {
         XCTAssertEqual(result.navigationState, .collectMoments)
     }
 
+    func testDatedVerticalMomentsTimelineWinsBeforeDarkViewerFallback() {
+        let analysis = FixtureAnalysis(
+            imageWidth: 420,
+            imageHeight: 932,
+            text: [
+                OCRObservation(text: "About Me", confidence: 0.96, bounds: NormalizedRect(x: 0.06, y: 0.16, width: 0.24, height: 0.03)),
+                OCRObservation(text: "Moments 5", confidence: 0.96, bounds: NormalizedRect(x: 0.34, y: 0.16, width: 0.24, height: 0.03)),
+                OCRObservation(text: "Achievements", confidence: 0.96, bounds: NormalizedRect(x: 0.64, y: 0.16, width: 0.28, height: 0.03)),
+                OCRObservation(text: "28/11/2025", confidence: 0.96, bounds: NormalizedRect(x: 0.76, y: 0.58, width: 0.18, height: 0.025))
+            ],
+            faces: []
+        )
+
+        let result = NavigationStateDetector().classify(analysis)
+
+        XCTAssertEqual(result.kind, .momentsFeed)
+        XCTAssertEqual(result.navigationState, .collectMoments)
+        XCTAssertTrue(result.evidence.contains("Moments timeline tab and dated post anchors"))
+    }
+
     func testSnapshotFingerprintIsStableAcrossObservationOrderAndIDs() {
         let first = fixture(["Personal Info", "INFJ"])
         let second = FixtureAnalysis(

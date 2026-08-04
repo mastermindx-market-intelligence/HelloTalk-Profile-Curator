@@ -47,6 +47,9 @@ public struct NavigationStateDetector: Sendable {
         if containsMomentsFeedAnchors(in: analysis) {
             return classification(.momentsFeed, .collectMoments, 0.9, ["Moments feed tab and activity anchors"])
         }
+        if containsMomentsTimelineAnchors(in: analysis) {
+            return classification(.momentsFeed, .collectMoments, 0.88, ["Moments timeline tab and dated post anchors"])
+        }
         if contains("Details", in: text)
             && (contains("Type a message", in: text) || contains("Comments", in: text)) {
             return classification(.momentDetails, .collectMoments, 0.93, ["Moment details header and comment composer"])
@@ -63,7 +66,7 @@ public struct NavigationStateDetector: Sendable {
                 || (contains("Like", in: text) && contains("Comment", in: text))) {
             return classification(.momentsFeed, .collectMoments, 0.84, ["Moments feed anchors"])
         }
-        if let image, MomentViewerVisualDetector().matches(image) {
+        if let image, MomentViewerVisualDetector().matches(image, faces: analysis.faces) {
             return classification(.momentViewer, .inspectMomentViewer, 0.8, ["Dark media frame and pagination strip"])
         }
         if contains("Suggested for You", in: text) {
@@ -122,6 +125,16 @@ public struct NavigationStateDetector: Sendable {
         return hasTab && contains("Like", in: text) && contains("Comment", in: text)
     }
 
+    private func containsMomentsTimelineAnchors(in analysis: FixtureAnalysis) -> Bool {
+        let text = analysis.text.map(\.text).joined(separator: " · ")
+        let hasProfileTabs = contains("Moments", in: text) && contains("Achievements", in: text)
+        let hasDatedPost = text.range(
+            of: #"\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b"#,
+            options: .regularExpression
+        ) != nil
+        return hasProfileTabs && hasDatedPost
+    }
+
     private func classification(
         _ kind: DetectedScreenKind,
         _ state: NavigationState,
@@ -133,7 +146,7 @@ public struct NavigationStateDetector: Sendable {
 }
 
 struct MomentViewerVisualDetector: Sendable {
-    func matches(_ image: CGImage) -> Bool {
+    func matches(_ image: CGImage, faces: [DetectedFace] = []) -> Bool {
         guard let pixels = ScreenPixelBuffer(image: image) else { return false }
         let topDark = pixels.darkFraction(in: NormalizedRect(x: 0.06, y: 0.12, width: 0.88, height: 0.08))
         let bottomDark = pixels.darkFraction(in: NormalizedRect(x: 0.06, y: 0.82, width: 0.88, height: 0.12))
@@ -141,11 +154,16 @@ struct MomentViewerVisualDetector: Sendable {
         let paginationLight = pixels.neutralLightFraction(
             in: NormalizedRect(x: 0.28, y: 0.86, width: 0.44, height: 0.055)
         )
+        let hasViewerChrome = paginationLight >= 0.0008 && paginationLight <= 0.06
+        let hasLargeCentralFace = faces.contains { face in
+            face.bounds.width * face.bounds.height >= 0.075
+                && face.bounds.center.x >= 0.12 && face.bounds.center.x <= 0.88
+                && face.bounds.center.y >= 0.20 && face.bounds.center.y <= 0.80
+        }
         return topDark >= 0.72
             && bottomDark >= 0.72
             && centerContent >= 0.18
-            && paginationLight >= 0.0008
-            && paginationLight <= 0.06
+            && (hasViewerChrome || hasLargeCentralFace || (paginationLight < 0.0008 && faces.isEmpty))
     }
 }
 

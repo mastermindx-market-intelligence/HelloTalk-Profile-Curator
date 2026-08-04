@@ -68,8 +68,23 @@ struct ContentView: View {
 
             Spacer()
 
-            Label("Dry run only", systemImage: "shield.checkered")
-                .foregroundStyle(.blue)
+            switch model.automationRunState {
+            case .running:
+                Button("Pause", systemImage: "pause.fill") { model.pauseAutonomousCollection() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+            case .paused:
+                Button("Resume", systemImage: "play.fill") { model.resumeAutonomousCollection() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+            case .idle, .stopped, .completed:
+                Button("Start Automatic", systemImage: "play.fill") { model.startAutonomousCollection() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+            }
+
+            Label(model.automationRunState.rawValue, systemImage: "gearshape.2.fill")
+                .foregroundStyle(model.automationRunState == .running ? .green : .secondary)
 
             Text(model.navigationState.rawValue)
                 .font(.caption.monospaced())
@@ -83,7 +98,7 @@ struct ContentView: View {
             .buttonStyle(.borderedProminent)
             .tint(.red)
             .disabled(model.sessionState.pauseReason == .emergencyStop)
-            .help("Latch the dry-run emergency stop and block every proposal")
+            .help("Immediately stop automation and latch the live-input safety gate")
         }
         .padding(12)
     }
@@ -99,6 +114,7 @@ struct ContentView: View {
 
                 permissionSection
                 windowSection
+                automaticCollectionSection
                 navigationSection
                 overlaySection
                 calibrationSection
@@ -199,7 +215,7 @@ struct ContentView: View {
                     .font(.caption)
                 Text("Orange path: proposed gallery swipe")
                     .font(.caption)
-                Text("Action result: blocked because dry-run is mandatory")
+                Text("Automatic input only runs after Start; every action is geometry-checked and verified afterward.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -208,7 +224,7 @@ struct ContentView: View {
     }
 
     private var navigationSection: some View {
-        GroupBox("Dry-run navigation") {
+        GroupBox("Navigation diagnostics") {
             VStack(alignment: .leading, spacing: 9) {
                 LabeledContent("Session", value: model.sessionStatus)
                 LabeledContent("Profiles", value: "\(model.sessionState.profileVisitCount)")
@@ -299,9 +315,33 @@ struct ContentView: View {
                     .font(.caption)
                 }
 
-                Button("New dry-run session") {
+                Button("Reset session") {
                     model.resetDryRunSession()
                 }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var automaticCollectionSection: some View {
+        GroupBox("Automatic collection") {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack {
+                    Label(model.automationRunState.rawValue, systemImage: model.automationRunState == .running ? "gearshape.2.fill" : "circle.fill")
+                        .foregroundStyle(model.automationRunState == .running ? .green : .secondary)
+                    Spacer()
+                    Text("\(model.automationProfileCount) profiles")
+                        .font(.caption.monospaced())
+                }
+                Text(model.automationStatus)
+                    .font(.callout)
+                LabeledContent("Live actions", value: "\(model.automationActionCount)")
+                Text("Automatically visits profiles, verifies female age 18–21 and target MBTI, captures PFP/Moment still frames, retains up to 10 of 20 scanned photos, queues Qwen, then follows visible similar profiles.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Never interacts with Say Hi, Follow, Like, Gift, comments, or messaging.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

@@ -115,11 +115,27 @@ final class PhotoExtractionTests: XCTestCase {
         XCTAssertEqual(NavigationStateDetector().classify(analysis, image: image).kind, .momentViewer)
     }
 
-    func testDarkViewerLikeFrameWithoutPaginationFailsClosed() throws {
+    func testLetterboxedMediaWithoutPaginationOrHumanFaceIsStillAViewer() throws {
         let image = try makeHiddenViewerImage(includePagination: false)
         let analysis = FixtureAnalysis(imageWidth: image.width, imageHeight: image.height, text: [], faces: [])
 
-        XCTAssertEqual(NavigationStateDetector().classify(analysis, image: image).kind, .unknown)
+        XCTAssertEqual(NavigationStateDetector().classify(analysis, image: image).kind, .momentViewer)
+    }
+
+    func testHiddenChromeLetterboxWithLargeCentralFaceIsMomentViewer() throws {
+        let image = try makeHiddenViewerImage(includePagination: false)
+        let analysis = FixtureAnalysis(
+            imageWidth: image.width,
+            imageHeight: image.height,
+            text: [],
+            faces: [DetectedFace(
+                bounds: NormalizedRect(x: 0.20, y: 0.30, width: 0.60, height: 0.42),
+                captureQuality: 0.8,
+                hasLandmarks: true
+            )]
+        )
+
+        XCTAssertEqual(NavigationStateDetector().classify(analysis, image: image).kind, .momentViewer)
     }
 
     func testTallPortraitViewerWithHiddenChromeUsesVisualFallback() throws {
