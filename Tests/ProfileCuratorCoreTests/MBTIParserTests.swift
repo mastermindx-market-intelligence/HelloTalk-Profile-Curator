@@ -7,13 +7,14 @@ final class MBTIParserTests: XCTestCase {
     func testFindsPrimaryAndSecondaryTargetsExactly() {
         let observations = [
             OCRObservation(text: "Personality: INFJ", confidence: 0.99, bounds: bounds),
-            OCRObservation(text: "Also shown: entp", confidence: 0.97, bounds: bounds)
+            OCRObservation(text: "Also shown: entp", confidence: 0.97, bounds: bounds),
+            OCRObservation(text: "Personality: ISFJ", confidence: 0.98, bounds: bounds)
         ]
 
         let matches = MBTIParser().matches(in: observations)
 
-        XCTAssertEqual(matches.map(\.type), [.infj, .entp])
-        XCTAssertEqual(matches.map(\.type.group), [.primary, .secondary])
+        XCTAssertEqual(matches.map(\.type), [.infj, .entp, .isfj])
+        XCTAssertEqual(matches.map(\.type.group), [.primary, .secondary, .secondary])
     }
 
     func testDoesNotFuzzyConvertDifferentOrInvalidTypes() {

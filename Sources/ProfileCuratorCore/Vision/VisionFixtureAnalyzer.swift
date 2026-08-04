@@ -22,7 +22,7 @@ public struct VisionFixtureAnalyzer: Sendable {
         textRequest.usesLanguageCorrection = true
         textRequest.recognitionLanguages = ["en-US", "zh-Hans"]
         textRequest.customWords = [
-            "INFJ", "INTJ", "INFP", "INTP", "ENFP", "ENTP", "ENFJ",
+            "INFJ", "INTJ", "INFP", "INTP", "ENFP", "ENTP", "ENFJ", "ISFJ",
             "Personal Info", "Suggested for You", "Moments", "About Me"
         ]
 

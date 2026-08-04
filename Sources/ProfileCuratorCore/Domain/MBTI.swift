@@ -27,7 +27,7 @@ public enum MBTIType: String, CaseIterable, Codable, Sendable {
         switch self {
         case .infj, .intj:
             .primary
-        case .infp, .intp, .enfp, .entp, .enfj:
+        case .infp, .intp, .enfp, .entp, .enfj, .isfj:
             .secondary
         default:
             nil

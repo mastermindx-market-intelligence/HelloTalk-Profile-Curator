@@ -85,11 +85,18 @@ final class CollectionPolicyTests: XCTestCase {
             mbti: .entp,
             locationScore: 55
         )).isCollectible)
+        XCTAssertEqual(policy.evaluate(OpenedProfileEvidence(
+            username: "@isfj-secondary",
+            age: 20,
+            gender: .female,
+            mbti: .isfj,
+            locationScore: 100
+        )), .collectSecondary)
         XCTAssertFalse(policy.evaluate(OpenedProfileEvidence(
             username: "@non-target",
             age: 20,
             gender: .female,
-            mbti: .isfj,
+            mbti: .istj,
             locationScore: 100
         )).isCollectible)
     }
