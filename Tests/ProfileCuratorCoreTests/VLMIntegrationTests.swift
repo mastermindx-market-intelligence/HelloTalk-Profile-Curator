@@ -179,6 +179,45 @@ final class VLMIntegrationTests: XCTestCase {
         XCTAssertTrue(run.tattooDetectionResult?.isConfirmed == true)
     }
 
+    func testLaterNegativeTattooRunCannotClearConfirmedFlagOrRestoreLifestyle() async throws {
+        let context = try temporaryRepository()
+        let profile = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@sticky_tattoo",
+            age: 20,
+            gender: .female,
+            mbti: .infj
+        ))
+        try context.repository.updateScores(
+            id: profile.id,
+            face: 84,
+            lifestyle: 0,
+            overall: 55,
+            confidence: 0.9,
+            hasVisibleTattoo: true
+        )
+        let image = context.root.appendingPathComponent("later.png")
+        try Data("image".utf8).write(to: image)
+        _ = try context.repository.enqueueAnalysis(
+            profileID: profile.id,
+            type: .tattooDetection,
+            modelName: "qwen3.5:9b",
+            promptVersion: VLMPromptLibrary.tattooDetectionVersion,
+            mediaPaths: [image.path]
+        )
+        let response = Data(#"{"visible_tattoo":false,"tattoo_confidence":0.98,"source_image_ids":[],"notes":["No tattoo visible in this frame"]}"#.utf8)
+        let processor = AnalysisQueueProcessor(
+            repository: context.repository,
+            client: MockVLMClient(result: .success(response)),
+            configuration: VLMConfiguration()
+        )
+
+        let processed = await processor.processNext()
+        XCTAssertTrue(processed)
+        let updated = try XCTUnwrap(context.repository.profile(id: profile.id))
+        XCTAssertTrue(updated.hasVisibleTattoo)
+        XCTAssertEqual(try XCTUnwrap(updated.lifestyleScore), 0, accuracy: 0.001)
+    }
+
     func testSuccessfulRunPersistsOrderedImageEvidenceLinks() async throws {
         let context = try temporaryRepository()
         let profile = try context.repository.upsert(ProfileDraft(

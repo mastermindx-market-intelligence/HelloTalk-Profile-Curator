@@ -172,6 +172,17 @@ public struct MomentThumbnailTargetDetector: Sendable {
         let hasTabs = matcher.contains(anchor: "About Me", in: text)
             && matcher.contains(anchor: "Moments", in: text)
             && matcher.contains(anchor: "Achievements", in: text)
+        let hasEngagement = text.range(
+            of: #"\b\d+\s*Like\b"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil && text.range(
+            of: #"\b\d+\s*Comment\b"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+        let hasPostDate = text.range(
+            of: #"\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b|\b\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?\b"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
         let hasProfileUsername = text.range(
             of: #"@[A-Z0-9_.-]{2,40}"#,
             options: [.regularExpression, .caseInsensitive]
@@ -179,7 +190,11 @@ public struct MomentThumbnailTargetDetector: Sendable {
         let isDetails = matcher.contains(anchor: "Details", in: text)
             && (matcher.contains(anchor: "Type a message", in: text)
                 || matcher.contains(anchor: "Comments", in: text))
-        return hasTabs && hasProfileUsername && !isDetails
+        // A profile can hide its @handle once the Moment feed is scrolled. The
+        // three profile tabs prove the top surface; engagement plus a post date
+        // prove a lower post. Pixel targeting still has to pass the ad filters.
+        return !isDetails && ((hasTabs && (hasProfileUsername || hasEngagement))
+            || (hasEngagement && hasPostDate))
     }
 
     private func bestGridStart(
@@ -247,7 +262,8 @@ public struct MomentThumbnailTargetDetector: Sendable {
     private func advertisingObservations(in observations: [OCRObservation]) -> [OCRObservation] {
         let markers = [
             "download now", "ad-free", "ad free", "sponsored", "advertisement",
-            "install", "promoted", "ad x"
+            "install", "promoted", "ad x", "download mobile", "deposit match",
+            "bonus spins", "betway"
         ]
         return observations.filter { observation in
             guard observation.confidence >= 0.35 else { return false }

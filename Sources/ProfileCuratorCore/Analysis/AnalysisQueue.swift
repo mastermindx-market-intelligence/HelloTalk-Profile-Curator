@@ -191,7 +191,10 @@ public actor AnalysisQueueProcessor {
             face = value.visualAppealScore
             confidence = combinedConfidence(existing: confidence, new: value.confidence)
         case .tattooDetection(let value):
-            hasVisibleTattoo = value.isConfirmed
+            // Confirmed visual evidence is sticky. A later retry may receive a
+            // weaker set of images and return false; it must not erase an earlier
+            // confirmed tattoo and restore the lifestyle score.
+            hasVisibleTattoo = hasVisibleTattoo || value.isConfirmed
             confidence = combinedConfidence(existing: confidence, new: value.confidence)
         case .lifestyle(let value):
             lifestyle = ProfileSignalScorer().enrichLifestyle(

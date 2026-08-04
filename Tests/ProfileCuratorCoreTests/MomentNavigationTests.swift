@@ -4,6 +4,31 @@ import XCTest
 @testable import ProfileCuratorCore
 
 final class MomentNavigationTests: XCTestCase {
+    func testOptionalLiveMultiPhotoPostFindsPhotosButRejectsAdRows() throws {
+        guard let path = ProcessInfo.processInfo.environment["HELLOTALK_MULTI_PHOTO_POST"] else {
+            throw XCTSkip("No live multi-photo post fixture supplied")
+        }
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let analysis = try VisionFixtureAnalyzer().analyze(image)
+        let mark = CalibrationMark(
+            context: .momentsFeed,
+            kind: .safeMomentThumbnailGrid,
+            bounds: NormalizedRect(x: 0.057, y: 0.20, width: 0.78, height: 0.69),
+            confirmed: true
+        )
+
+        let targets = MomentThumbnailTargetDetector().targets(
+            in: image,
+            from: [mark],
+            observations: analysis.text,
+            faces: analysis.faces
+        )
+
+        XCTAssertEqual(targets.map(\.index), [0, 1, 2])
+        XCTAssertTrue(targets.allSatisfy { $0.point.y < 0.46 })
+    }
+
     func testOptionalLiveTopGalleryFixtureProducesOnlySixPhotoCells() throws {
         guard let path = ProcessInfo.processInfo.environment["HELLOTALK_LIVE_TOP_GALLERY"] else {
             throw XCTSkip("No live top-gallery fixture supplied")
@@ -203,6 +228,26 @@ final class MomentNavigationTests: XCTestCase {
             from: [mark],
             observations: gallery
         ).isEmpty)
+    }
+
+    func testPostEngagementAndDatePermitExactGridWithoutVisibleHandle() throws {
+        let mark = CalibrationMark(
+            context: .momentsFeed,
+            kind: .safeMomentThumbnailGrid,
+            bounds: NormalizedRect(x: 0.057, y: 0.20, width: 0.78, height: 0.66),
+            confirmed: true
+        )
+        let image = try makeMomentGridImage(rows: 1, finalRowColumns: 3)
+        let observations = [
+            OCRObservation(text: "347 Like", confidence: 0.98, bounds: NormalizedRect(x: 0.06, y: 0.21, width: 0.14, height: 0.03)),
+            OCRObservation(text: "16 Comment", confidence: 0.98, bounds: NormalizedRect(x: 0.22, y: 0.21, width: 0.18, height: 0.03)),
+            OCRObservation(text: "Sunday 03:52", confidence: 0.98, bounds: NormalizedRect(x: 0.72, y: 0.28, width: 0.20, height: 0.03))
+        ]
+
+        XCTAssertEqual(
+            MomentThumbnailTargetDetector().targets(in: image, from: [mark], observations: observations).count,
+            3
+        )
     }
 
     func testLaterAlignedRowsBeatSingleThreeColumnDistractor() throws {

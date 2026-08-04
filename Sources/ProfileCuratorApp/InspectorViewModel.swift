@@ -657,30 +657,57 @@ final class InspectorViewModel: ObservableObject {
             automationNoProgressCount = 0
             return
         }
-        // The verified top gallery is the only collection surface. Scrolling into
-        // the timeline exposes post containers and overlapping copies of the same
-        // gallery row, so finish as soon as its unique thumbnails are exhausted.
-        try await finishMediaCollection(snapshot)
+        // Scrolling into the next post is allowed only after every exact
+        // pixel-detected photo cell in the current viewport is exhausted.
+        // Thumbnail hashes suppress overlap;
+        // the detector no longer has any date/face fallback that could tap a post
+        // container, text block, or ad.
+        let changed = try await performVerticalScroll(
+            lines: -6,
+            context: .momentsFeed,
+            previousFingerprint: snapshot.fingerprint,
+            unchangedIsAllowed: true
+        )
+        automationNoProgressCount += 1
+        if changed, observationSnapshot?.screen.kind == .momentsFeed,
+           automationNoProgressCount < 8 {
+            automationMomentFeedPage += 1
+            return
+        }
+        try await finishMediaCollection(observationSnapshot ?? snapshot)
     }
 
     private func finishMediaCollection(_ snapshot: ObservationSnapshot) async throws {
-        if let username = profileAccumulator.username {
-            recommendationLedger.recordVerifiedProfileKey(username)
+        if automationPhase != .exitMoments {
+            if let username = profileAccumulator.username {
+                recommendationLedger.recordVerifiedProfileKey(username)
+            }
+            if let displayName = profileAccumulator.displayName {
+                recommendationLedger.recordCompletedDisplayName(displayName)
+            }
+            finalizeCurrentProfileMedia()
+            recordEvent(.transition, summary: collectionStatus)
+            queueCurrentProfileAnalysis()
+            recordEvent(.transition, summary: collectionStatus)
+            startQwenWorkerIfNeeded()
+            automationProfileCount += 1
+            automationPhase = .exitMoments
+            automationNoProgressCount = 0
+            automationScrollAttempts = 0
         }
-        if let displayName = profileAccumulator.displayName {
-            recommendationLedger.recordCompletedDisplayName(displayName)
-        }
-        finalizeCurrentProfileMedia()
-        recordEvent(.transition, summary: collectionStatus)
-        queueCurrentProfileAnalysis()
-        recordEvent(.transition, summary: collectionStatus)
-        startQwenWorkerIfNeeded()
-        automationProfileCount += 1
-        automationPhase = .exitMoments
-        automationNoProgressCount = 0
         guard let observations = analysis?.text,
               let aboutMe = profileInteractionSafety.tabAction(named: "About Me", in: observations) else {
-            throw AutomationRuntimeError.unknownState("The live About Me tab OCR anchor is unavailable; refusing to leave Moments with the profile Back button")
+            automationScrollAttempts += 1
+            guard automationScrollAttempts <= 8 else {
+                throw AutomationRuntimeError.unknownState("The collector could not return the scrolled Moment feed to the verified About Me tab")
+            }
+            _ = try await performVerticalScroll(
+                lines: 12,
+                context: .momentsFeed,
+                previousFingerprint: snapshot.fingerprint,
+                unchangedIsAllowed: true
+            )
+            return
         }
         _ = try await performClick(
             aboutMe,
