@@ -495,7 +495,7 @@ final class InspectorViewModel: ObservableObject {
             checkpointViewerPhoto()
             automationMomentKeys.formUnion(automationPendingMomentKeys)
             automationPendingMomentKeys = []
-            try await dismissMomentViewer(snapshot)
+            try await dismissMomentViewer()
 
         case .interstitialAd:
             guard automationPhase == .scanMoments else {
@@ -840,44 +840,7 @@ final class InspectorViewModel: ObservableObject {
         return changed
     }
 
-    private func dismissMomentViewer(_ snapshot: ObservationSnapshot) async throws {
-        if let reveal = momentDismissPlanner.chromeRevealAction(from: calibrationMarks),
-           let close = momentDismissPlanner.closeAction(from: calibrationMarks) {
-            var currentFingerprint = snapshot.fingerprint
-            for attempt in 0..<2 {
-                do {
-                    let revealed = try await performClick(
-                        reveal,
-                        context: .momentViewer,
-                        expecting: .contentHashChanged(previous: currentFingerprint)
-                    )
-                    currentFingerprint = revealed.fingerprint
-                } catch let runtimeError as AutomationRuntimeError {
-                    guard case .postconditionFailed = runtimeError else { throw runtimeError }
-                    recordEvent(
-                        .postcondition,
-                        summary: "retry · Moment chrome toggle was visually inconclusive"
-                    )
-                }
-
-                do {
-                    _ = try await performClick(
-                        close,
-                        context: .momentViewer,
-                        expecting: .profilePageDetected
-                    )
-                    automationPhase = .scanMoments
-                    return
-                } catch let runtimeError as AutomationRuntimeError {
-                    guard case .postconditionFailed = runtimeError else { throw runtimeError }
-                    recordEvent(
-                        .postcondition,
-                        summary: "retry · Moment X did not close viewer on attempt \(attempt + 1)"
-                    )
-                }
-            }
-        }
-
+    private func dismissMomentViewer() async throws {
         guard let automationWindowFrame,
               let gesture = momentDismissPlanner.proposal(from: calibrationMarks) else {
             throw AutomationRuntimeError.calibrationMissing("Moment viewer / dismiss gesture")
@@ -906,6 +869,10 @@ final class InspectorViewModel: ObservableObject {
                 throw AutomationRuntimeError.actionBlocked(decision.rejection.map { gestureRejectionDescription($0) } ?? "unknown rejection")
             }
             automationActionCount += 1
+            recordEvent(
+                .safetyDecision,
+                summary: "Executed closeViewer · Swipe down to dismiss Moment photo · attempt \(attempt + 1)"
+            )
             try await Task.sleep(for: .milliseconds(attempt == 0 ? 750 : 950))
             let next = try await captureAutomationFrame()
             let changed = next.screen.kind != .momentViewer

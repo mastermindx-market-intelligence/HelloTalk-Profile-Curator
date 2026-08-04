@@ -94,40 +94,6 @@ public struct GestureSafetyValidator: Sendable {
 public struct MomentViewerDismissPlanner: Sendable {
     public init() {}
 
-    public func closeAction(from marks: [CalibrationMark]) -> PlannedAction? {
-        guard let mark = marks.last(where: {
-            $0.context == .momentViewer && $0.kind == .safeBackClose
-        }) else {
-            return nil
-        }
-        return PlannedAction(
-            kind: .closeViewer,
-            point: mark.bounds.center,
-            requiredSafeRegion: mark.bounds,
-            rationale: "Tap the calibrated Moment viewer X"
-        )
-    }
-
-    public func chromeRevealAction(from marks: [CalibrationMark]) -> PlannedAction? {
-        guard let mark = marks.last(where: {
-            $0.context == .momentViewer && $0.kind == .safeMomentDismissGesture
-        }) else {
-            return nil
-        }
-        let region = NormalizedRect(
-            x: mark.bounds.center.x - 0.06,
-            y: mark.bounds.center.y - 0.05,
-            width: 0.12,
-            height: 0.10
-        )
-        return PlannedAction(
-            kind: .closeViewer,
-            point: region.center,
-            requiredSafeRegion: region,
-            rationale: "Toggle hidden Moment viewer chrome before tapping X"
-        )
-    }
-
     public func proposal(from marks: [CalibrationMark]) -> PlannedGesture? {
         guard let mark = marks.last(where: {
             $0.context == .momentViewer && $0.kind == .safeMomentDismissGesture
@@ -141,7 +107,7 @@ public struct MomentViewerDismissPlanner: Sendable {
             start: NormalizedPoint(x: x, y: mark.bounds.minY + mark.bounds.height * 0.045),
             end: NormalizedPoint(x: x, y: mark.bounds.minY + mark.bounds.height * 0.955),
             requiredSafeRegion: mark.bounds,
-            rationale: "Dry-run letterbox-safe downward dismiss for the Moment viewer"
+            rationale: "Calibrated letterbox-safe downward dismiss for the Moment viewer"
         )
     }
 }

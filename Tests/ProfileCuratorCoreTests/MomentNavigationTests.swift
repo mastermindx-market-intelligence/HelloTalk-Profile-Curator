@@ -217,28 +217,6 @@ final class MomentNavigationTests: XCTestCase {
         XCTAssertEqual(decision.rejection, .dryRunRequired)
     }
 
-    func testMomentDismissPlannerUsesCalibratedChromeToggleAndCloseX() throws {
-        let revealMark = CalibrationMark(
-            context: .momentViewer,
-            kind: .safeMomentDismissGesture,
-            bounds: NormalizedRect(x: 0.12, y: 0.43, width: 0.76, height: 0.44),
-            confirmed: true
-        )
-        let closeMark = CalibrationMark(
-            context: .momentViewer,
-            kind: .safeBackClose,
-            bounds: NormalizedRect(x: 0.057, y: 0.103, width: 0.062, height: 0.04),
-            confirmed: true
-        )
-        let planner = MomentViewerDismissPlanner()
-        let reveal = try XCTUnwrap(planner.chromeRevealAction(from: [revealMark, closeMark]))
-        let close = try XCTUnwrap(planner.closeAction(from: [revealMark, closeMark]))
-
-        XCTAssertTrue(revealMark.bounds.contains(reveal.point))
-        XCTAssertEqual(close.point, closeMark.bounds.center)
-        XCTAssertEqual(close.requiredSafeRegion, closeMark.bounds)
-    }
-
     func testInterstitialAdDismissUsesDedicatedTopRightCloseRegion() {
         let action = InterstitialAdDismissPlanner().closeAction()
 
