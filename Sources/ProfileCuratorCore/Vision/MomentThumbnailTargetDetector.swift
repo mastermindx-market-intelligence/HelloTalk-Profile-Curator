@@ -29,6 +29,26 @@ public struct MomentThumbnailTarget: Identifiable, Hashable, Sendable {
     }
 }
 
+public struct MomentVisitKeyBuilder: Sendable {
+    public init() {}
+
+    public func keys(
+        targetIndex: Int,
+        feedPage: Int,
+        thumbnailHash: String?,
+        timelineDate: String? = nil
+    ) -> Set<String> {
+        var keys: Set<String> = ["slot|\(feedPage)|\(targetIndex)"]
+        if let thumbnailHash, !thumbnailHash.isEmpty {
+            keys.insert("thumbnail|\(thumbnailHash)")
+        }
+        if let timelineDate, !timelineDate.isEmpty {
+            keys.insert("timeline|\(timelineDate.lowercased())")
+        }
+        return keys
+    }
+}
+
 public struct MomentThumbnailTargetDetector: Sendable {
     public init() {}
 

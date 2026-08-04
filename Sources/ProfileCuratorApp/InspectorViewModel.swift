@@ -127,7 +127,8 @@ final class InspectorViewModel: ObservableObject {
     private var automationNoProgressCount = 0
     private var automationUnknownCount = 0
     private var automationMomentKeys: Set<String> = []
-    private var automationPendingMomentKey: String?
+    private var automationPendingMomentKeys: Set<String> = []
+    private var automationMomentFeedPage = 0
     private var automationCollectedUsername: String?
     private var automationLastFingerprint: String?
     private var automationWindowFrame: CGRect?
@@ -300,7 +301,8 @@ final class InspectorViewModel: ObservableObject {
         automationNoProgressCount = 0
         automationUnknownCount = 0
         automationMomentKeys = []
-        automationPendingMomentKey = nil
+        automationPendingMomentKeys = []
+        automationMomentFeedPage = 0
         let checkpoint = try? CollectionCheckpointStore.defaultStore().load()
         automationCollectedUsername = checkpoint?.currentUsername
         automationLastFingerprint = nil
@@ -491,8 +493,8 @@ final class InspectorViewModel: ObservableObject {
                 throw AutomationRuntimeError.unknownState("Unexpected Moment viewer")
             }
             checkpointViewerPhoto()
-            if let key = automationPendingMomentKey { automationMomentKeys.insert(key) }
-            automationPendingMomentKey = nil
+            automationMomentKeys.formUnion(automationPendingMomentKeys)
+            automationPendingMomentKeys = []
             try await dismissMomentViewer(snapshot)
 
         case .interstitialAd:
@@ -505,7 +507,7 @@ final class InspectorViewModel: ObservableObject {
                 context: .momentViewer,
                 expecting: .contentHashChanged(previous: snapshot.fingerprint)
             )
-            automationPendingMomentKey = nil
+            automationPendingMomentKeys = []
             automationPhase = .scanMoments
 
         case .momentDetails:
@@ -605,23 +607,27 @@ final class InspectorViewModel: ObservableObject {
         }
 
         let available = momentThumbnailTargets.first { target in
-            !automationMomentKeys.contains(momentKey(target, fingerprint: snapshot.fingerprint))
+            automationMomentKeys.isDisjoint(with: momentKeys(target))
         }
         if let target = available {
-            let key = momentKey(target, fingerprint: snapshot.fingerprint)
-            automationPendingMomentKey = key
+            let keys = momentKeys(target)
+            automationPendingMomentKeys = keys
             proposedMomentThumbnailTarget = target
             _ = try await performClick(target.plannedAction, context: .momentsFeed, expecting: .viewerDetected)
+            automationMomentKeys.formUnion(keys)
             automationNoProgressCount = 0
             return
         }
 
-        _ = try await performVerticalScroll(
+        let changed = try await performVerticalScroll(
             lines: -6,
             context: .momentsFeed,
             previousFingerprint: snapshot.fingerprint,
             unchangedIsAllowed: true
         )
+        if changed, observationSnapshot?.screen.kind == .momentsFeed {
+            automationMomentFeedPage += 1
+        }
         automationNoProgressCount += 1
         if automationNoProgressCount >= 5 {
             try await finishMediaCollection(snapshot)
@@ -914,17 +920,33 @@ final class InspectorViewModel: ObservableObject {
         throw AutomationRuntimeError.postconditionFailed("Moment viewer did not dismiss after two calibrated attempts")
     }
 
-    private func momentKey(_ target: MomentThumbnailTarget, fingerprint: String) -> String {
-        if target.index >= 100,
-           let date = analysis?.text.first(where: {
-               $0.text.range(
-                   of: #"\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b"#,
-                   options: .regularExpression
-               ) != nil
-           }) {
-            return "timeline|\(date.text.lowercased())"
+    private func momentKeys(_ target: MomentThumbnailTarget) -> Set<String> {
+        let thumbnailHash: String?
+        if let image = currentCGImage,
+           let crop = WindowPhotoCropper().crop(image, to: target.safePhotoRegion) {
+            thumbnailHash = ImagePerceptualHasher().differenceHash(crop)
+        } else {
+            thumbnailHash = nil
         }
-        return "\(fingerprint)|\(target.index)"
+        let timelineDate: String?
+        if target.index >= 100 {
+            let dates = analysis?.text.filter {
+                $0.text.range(
+                    of: #"\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b"#,
+                    options: .regularExpression
+                ) != nil
+            } ?? []
+            let dateIndex = target.index - 100
+            timelineDate = dates.indices.contains(dateIndex) ? dates[dateIndex].text : nil
+        } else {
+            timelineDate = nil
+        }
+        return MomentVisitKeyBuilder().keys(
+            targetIndex: target.index,
+            feedPage: automationMomentFeedPage,
+            thumbnailHash: thumbnailHash,
+            timelineDate: timelineDate
+        )
     }
 
     private func scannedMomentCount() -> Int {
@@ -942,7 +964,8 @@ final class InspectorViewModel: ObservableObject {
         automationNoProgressCount = 0
         automationUnknownCount = 0
         automationMomentKeys = []
-        automationPendingMomentKey = nil
+        automationPendingMomentKeys = []
+        automationMomentFeedPage = 0
     }
 
     private func startQwenWorkerIfNeeded() {

@@ -4,6 +4,41 @@ import XCTest
 @testable import ProfileCuratorCore
 
 final class MomentNavigationTests: XCTestCase {
+    func testMomentVisitKeysStayStableWhenWholeScreenFingerprintChanges() {
+        let builder = MomentVisitKeyBuilder()
+        let first = builder.keys(
+            targetIndex: 0,
+            feedPage: 0,
+            thumbnailHash: "same-thumbnail"
+        )
+        let afterViewerDismissal = builder.keys(
+            targetIndex: 0,
+            feedPage: 0,
+            thumbnailHash: "same-thumbnail"
+        )
+
+        XCTAssertEqual(first, afterViewerDismissal)
+        XCTAssertFalse(first.isDisjoint(with: afterViewerDismissal))
+    }
+
+    func testMomentVisitKeysRecognizeMovedThumbnailByImageHash() {
+        let builder = MomentVisitKeyBuilder()
+        let first = builder.keys(targetIndex: 0, feedPage: 0, thumbnailHash: "same-thumbnail")
+        let moved = builder.keys(targetIndex: 4, feedPage: 1, thumbnailHash: "same-thumbnail")
+
+        XCTAssertFalse(first.isDisjoint(with: moved))
+    }
+
+    func testMomentVisitSlotCanBeReusedOnlyAfterDeliberateFeedPageChange() {
+        let builder = MomentVisitKeyBuilder()
+        let visited = builder.keys(targetIndex: 0, feedPage: 0, thumbnailHash: nil)
+        let samePage = builder.keys(targetIndex: 0, feedPage: 0, thumbnailHash: nil)
+        let nextPage = builder.keys(targetIndex: 0, feedPage: 1, thumbnailHash: nil)
+
+        XCTAssertFalse(visited.isDisjoint(with: samePage))
+        XCTAssertTrue(visited.isDisjoint(with: nextPage))
+    }
+
     func testObservedMomentGridProducesNineImageOnlyTargets() throws {
         let marks = [CalibrationMark(
             context: .momentsFeed,
