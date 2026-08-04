@@ -588,6 +588,32 @@ private struct QwenAnalysisCard: View {
                     BooleanBadge(label: "Not heavily filtered", value: !result.isHeavilyFiltered)
                 }
                 ScoreMetricRow(label: "Confidence", value: result.confidence * 100)
+                Divider()
+                HStack {
+                    Text("AI-generated likelihood")
+                        .font(.caption.bold())
+                    Spacer()
+                    Text(result.syntheticMediaLikelihood.rawValue.capitalized)
+                        .font(.caption.bold())
+                        .foregroundStyle(syntheticLikelihoodColor(result.syntheticMediaLikelihood))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(
+                            syntheticLikelihoodColor(result.syntheticMediaLikelihood).opacity(0.14),
+                            in: Capsule()
+                        )
+                }
+                if result.syntheticMediaLikelihood != .uncertain {
+                    ScoreMetricRow(
+                        label: "AI-check confidence",
+                        value: result.syntheticMediaConfidence * 100
+                    )
+                }
+                ForEach(Array(result.syntheticMediaSignals.enumerated()), id: \.offset) { _, signal in
+                    Label(signal, systemImage: "exclamationmark.magnifyingglass")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         } else if let result = run.visualAppealResult {
             VStack(alignment: .leading, spacing: 10) {
@@ -673,6 +699,17 @@ private struct QwenAnalysisCard: View {
         case .tattooDetection: "Tattoo check"
         case .lifestyle: "Lifestyle evidence"
         case nil: humanized(run.analysisType)
+        }
+    }
+
+    private func syntheticLikelihoodColor(
+        _ likelihood: FaceVerificationResult.SyntheticMediaLikelihood
+    ) -> Color {
+        switch likelihood {
+        case .low: .green
+        case .medium: .yellow
+        case .high: .red
+        case .uncertain: .secondary
         }
     }
 }

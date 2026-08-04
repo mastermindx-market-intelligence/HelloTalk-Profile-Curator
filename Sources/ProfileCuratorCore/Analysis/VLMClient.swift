@@ -76,11 +76,21 @@ public struct VLMHealth: Hashable, Sendable {
 }
 
 public struct FaceVerificationResult: Codable, Hashable, Sendable {
+    public enum SyntheticMediaLikelihood: String, Codable, Hashable, Sendable {
+        case low
+        case medium
+        case high
+        case uncertain
+    }
+
     public let isPhotographicHumanFace: Bool
     public let isIllustrationOrAnime: Bool
     public let isHeavilyFiltered: Bool
     public let isFaceClearEnoughToScore: Bool
     public let confidence: Double
+    public let syntheticMediaLikelihood: SyntheticMediaLikelihood
+    public let syntheticMediaConfidence: Double
+    public let syntheticMediaSignals: [String]
 
     private enum CodingKeys: String, CodingKey {
         case isPhotographicHumanFace = "is_photographic_human_face"
@@ -88,6 +98,9 @@ public struct FaceVerificationResult: Codable, Hashable, Sendable {
         case isHeavilyFiltered = "is_heavily_filtered"
         case isFaceClearEnoughToScore = "is_face_clear_enough_to_score"
         case confidence
+        case syntheticMediaLikelihood = "synthetic_media_likelihood"
+        case syntheticMediaConfidence = "synthetic_media_confidence"
+        case syntheticMediaSignals = "synthetic_media_signals"
     }
 
     public init(from decoder: Decoder) throws {
@@ -97,6 +110,17 @@ public struct FaceVerificationResult: Codable, Hashable, Sendable {
         isHeavilyFiltered = try container.decode(Bool.self, forKey: .isHeavilyFiltered)
         isFaceClearEnoughToScore = try container.decode(Bool.self, forKey: .isFaceClearEnoughToScore)
         confidence = normalizedConfidence(try container.decode(Double.self, forKey: .confidence))
+        syntheticMediaLikelihood = try container.decodeIfPresent(
+            SyntheticMediaLikelihood.self,
+            forKey: .syntheticMediaLikelihood
+        ) ?? .uncertain
+        syntheticMediaConfidence = normalizedConfidence(
+            try container.decodeIfPresent(Double.self, forKey: .syntheticMediaConfidence) ?? 0
+        )
+        syntheticMediaSignals = try container.decodeIfPresent(
+            [String].self,
+            forKey: .syntheticMediaSignals
+        ) ?? []
     }
 }
 
@@ -290,13 +314,13 @@ public extension AnalysisRunRecord {
 }
 
 public enum VLMPromptLibrary {
-    public static let faceVerificationVersion = "face-verification-v2"
+    public static let faceVerificationVersion = "face-verification-v3"
     public static let visualAppealVersion = "visual-appeal-v3"
     public static let tattooDetectionVersion = "tattoo-detection-v1"
     public static let lifestyleVersion = "lifestyle-evidence-v3"
 
     public static let faceVerification = """
-    Return JSON only. Determine whether the provided crop contains a photographic human face that is clear enough for presentation scoring. Distinguish illustration/anime and heavy filtering. Do not identify the person or infer protected traits. Use keys: is_photographic_human_face, is_illustration_or_anime, is_heavily_filtered, is_face_clear_enough_to_score, confidence, source_image_ids. confidence must be from 0.0 to 1.0.
+    Return JSON only. Determine whether the supplied images contain a photographic human face that is clear enough for presentation scoring. Distinguish illustration/anime, heavy filtering, and suspected synthetic or AI-generated imagery. Compare all supplied images for identity consistency and look only for visible generation evidence such as malformed anatomy or accessories, incoherent text or reflections, repeated texture, impossible geometry, or mutually inconsistent facial structure. Ordinary beauty filters, compression, blur, makeup, stickers, dog-ear/nose filters, and the HelloTalk "AI Photo Gift" interface overlay are NOT by themselves evidence that the underlying person or photo is synthetic. Do not identify the person or infer protected traits. synthetic_media_likelihood must be low, medium, high, or uncertain; use high only when multiple specific visible artifacts or strong cross-photo inconsistency support it, and otherwise prefer uncertain. Use keys: is_photographic_human_face, is_illustration_or_anime, is_heavily_filtered, is_face_clear_enough_to_score, confidence, synthetic_media_likelihood, synthetic_media_confidence, synthetic_media_signals, source_image_ids. confidence and synthetic_media_confidence must be from 0.0 to 1.0. synthetic_media_signals must be a short array of factual observations and empty when likelihood is low.
     """
 
     public static let visualAppeal = """

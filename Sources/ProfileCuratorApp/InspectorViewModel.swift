@@ -149,6 +149,7 @@ final class InspectorViewModel: ObservableObject {
     private var automationMomentFeedPage = 0
     private var automationViewerChromeProbed = false
     private var automationViewerIndices: Set<Int> = []
+    private var automationMomentDetectionRetries = 0
     private var automationCollectedUsername: String?
     private var automationCustomSearchVisitedKeys: Set<String> = []
     private var automationCustomSearchRefreshCount = 0
@@ -329,6 +330,7 @@ final class InspectorViewModel: ObservableObject {
         automationMomentFeedPage = 0
         automationViewerChromeProbed = false
         automationViewerIndices = []
+        automationMomentDetectionRetries = 0
         automationCustomSearchVisitedKeys = []
         automationCustomSearchRefreshCount = 0
         automationCustomSearchCandidateLocation = nil
@@ -950,10 +952,11 @@ final class InspectorViewModel: ObservableObject {
 
     private func customSearchVisitKey(_ target: CustomSearchResultTarget) -> String {
         guard let image = currentCGImage,
-              let avatar = WindowPhotoCropper().crop(image, to: target.safePhotoRegion) else {
+              let avatar = WindowPhotoCropper().crop(image, to: target.safePhotoRegion),
+              let avatarHash = ImagePerceptualHasher().differenceHash(avatar) else {
             return target.profileKey
         }
-        return "\(target.profileKey)|\(ImagePerceptualHasher().differenceHash(avatar))"
+        return "\(target.profileKey)|\(avatarHash)"
     }
 
     private func scanVisibleMoments(_ snapshot: ObservationSnapshot) async throws {
@@ -962,7 +965,23 @@ final class InspectorViewModel: ObservableObject {
             return
         }
 
-        let available = momentThumbnailTargets.first { target in
+        let detectedTargets = momentThumbnailTargets
+        if detectedTargets.isEmpty,
+           automationMomentDetectionRetries < MomentThumbnailSamplingPolicy.passiveFrameAttempts {
+            automationMomentDetectionRetries += 1
+            automationStatus = "Watching animated Moment cover · frame \(automationMomentDetectionRetries)/\(MomentThumbnailSamplingPolicy.passiveFrameAttempts)"
+            recordEvent(
+                .observation,
+                summary: "Moment target absent · waiting for animated cover frame \(automationMomentDetectionRetries)/\(MomentThumbnailSamplingPolicy.passiveFrameAttempts)"
+            )
+            try await Task.sleep(
+                for: .milliseconds(MomentThumbnailSamplingPolicy.intervalMilliseconds)
+            )
+            return
+        }
+        automationMomentDetectionRetries = 0
+
+        let available = detectedTargets.first { target in
             automationMomentKeys.isDisjoint(with: momentKeys(target))
         }
         if let target = available {
@@ -1006,6 +1025,7 @@ final class InspectorViewModel: ObservableObject {
             }
             automationMomentKeys.formUnion(keys)
             automationNoProgressCount = 0
+            automationMomentDetectionRetries = 0
             return
         }
         // Scrolling into the next post is allowed only after every exact
@@ -1023,6 +1043,7 @@ final class InspectorViewModel: ObservableObject {
         if changed, observationSnapshot?.screen.kind == .momentsFeed,
            automationNoProgressCount < 8 {
             automationMomentFeedPage += 1
+            automationMomentDetectionRetries = 0
             return
         }
         try await finishMediaCollection(observationSnapshot ?? snapshot)
@@ -1469,6 +1490,7 @@ final class InspectorViewModel: ObservableObject {
         automationMomentFeedPage = 0
         automationViewerChromeProbed = false
         automationViewerIndices = []
+        automationMomentDetectionRetries = 0
     }
 
     private func startQwenWorkerIfNeeded() {

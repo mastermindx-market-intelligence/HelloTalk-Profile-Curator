@@ -1,6 +1,11 @@
 import CoreGraphics
 import Foundation
 
+public enum MomentThumbnailSamplingPolicy {
+    public static let passiveFrameAttempts = 5
+    public static let intervalMilliseconds = 700
+}
+
 public struct MomentThumbnailTarget: Identifiable, Hashable, Sendable {
     public let id: UUID
     public let index: Int

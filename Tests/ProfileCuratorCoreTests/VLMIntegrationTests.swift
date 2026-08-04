@@ -41,7 +41,7 @@ final class VLMIntegrationTests: XCTestCase {
     func testQwenScoresAndConfidenceAreNormalizedAtDecodeBoundary() throws {
         let visual = Data(#"{"visual_appeal_score":140,"confidence":95,"photo_quality_penalty":120,"notes":[]}"#.utf8)
         let lifestyle = Data(#"{"lifestyle_affluence_signal":-8,"confidence":85,"evidence":[],"actual_wealth":"unknown"}"#.utf8)
-        let face = Data(#"{"is_photographic_human_face":true,"is_illustration_or_anime":false,"is_heavily_filtered":false,"is_face_clear_enough_to_score":true,"confidence":98}"#.utf8)
+        let face = Data(#"{"is_photographic_human_face":true,"is_illustration_or_anime":false,"is_heavily_filtered":false,"is_face_clear_enough_to_score":true,"confidence":98,"synthetic_media_likelihood":"low","synthetic_media_confidence":0.82,"synthetic_media_signals":[]}"#.utf8)
 
         let visualResult = try JSONDecoder().decode(VisualAppealResult.self, from: visual)
         let lifestyleResult = try JSONDecoder().decode(LifestyleSignalResult.self, from: lifestyle)
@@ -53,6 +53,18 @@ final class VLMIntegrationTests: XCTestCase {
         XCTAssertEqual(lifestyleResult.lifestyleAffluenceSignal, 0)
         XCTAssertEqual(lifestyleResult.confidence, 0.85, accuracy: 0.001)
         XCTAssertEqual(faceResult.confidence, 0.98, accuracy: 0.001)
+        XCTAssertEqual(faceResult.syntheticMediaLikelihood, .low)
+        XCTAssertEqual(faceResult.syntheticMediaConfidence, 0.82, accuracy: 0.001)
+    }
+
+    func testLegacyFaceVerificationDefaultsAIStatusToUncertain() throws {
+        let legacy = Data(#"{"is_photographic_human_face":true,"is_illustration_or_anime":false,"is_heavily_filtered":false,"is_face_clear_enough_to_score":true,"confidence":0.91}"#.utf8)
+
+        let result = try JSONDecoder().decode(FaceVerificationResult.self, from: legacy)
+
+        XCTAssertEqual(result.syntheticMediaLikelihood, .uncertain)
+        XCTAssertEqual(result.syntheticMediaConfidence, 0)
+        XCTAssertTrue(result.syntheticMediaSignals.isEmpty)
     }
 
     func testFaceAnalysisPrefersCloseupOverSmallFaceInsideScreenshot() {

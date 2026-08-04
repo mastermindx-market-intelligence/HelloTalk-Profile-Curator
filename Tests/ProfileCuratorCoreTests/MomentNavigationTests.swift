@@ -160,6 +160,15 @@ final class MomentNavigationTests: XCTestCase {
         XCTAssertEqual(targets.first?.index, 0)
     }
 
+    func testAnimatedMomentCoverGetsSeveralPassiveDetectionFrames() {
+        XCTAssertGreaterThanOrEqual(MomentThumbnailSamplingPolicy.passiveFrameAttempts, 4)
+        XCTAssertGreaterThanOrEqual(
+            MomentThumbnailSamplingPolicy.passiveFrameAttempts
+                * MomentThumbnailSamplingPolicy.intervalMilliseconds,
+            2_800
+        )
+    }
+
     func testMomentGridRequiresDedicatedCalibrationRegion() {
         let image = try! makeMomentGridImage(rows: 2, finalRowColumns: 2)
         XCTAssertTrue(MomentThumbnailTargetDetector().targets(in: image, from: []).isEmpty)
