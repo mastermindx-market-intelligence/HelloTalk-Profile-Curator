@@ -13,5 +13,6 @@ cp "$project_dir/.build/debug/ProfileCurator" "$bundle_dir/Contents/MacOS/Profil
 cp "$project_dir/Packaging/Info.plist" "$bundle_dir/Contents/Info.plist"
 
 codesign --force --sign - --options runtime --timestamp=none \
+  --requirements '=designated => identifier "local.profilecurator.app"' \
   --entitlements "$project_dir/Packaging/ProfileCurator.entitlements" "$bundle_dir"
 echo "$bundle_dir"

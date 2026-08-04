@@ -77,6 +77,8 @@ scripts/package-dmg.sh
 
 Set `PROFILE_CURATOR_SIGN_IDENTITY` to a Developer ID Application identity and `PROFILE_CURATOR_NOTARY_PROFILE` to a configured `notarytool` keychain profile for signed, notarized, stapled output.
 
+Ad-hoc local builds embed a stable designated requirement for `local.profilecurator.app`, so macOS Screen Recording and Accessibility grants survive ordinary rebuilds. Switching between older builds signed without that requirement and current builds requires resetting and granting those two permissions once.
+
 ## Test
 
 ```bash

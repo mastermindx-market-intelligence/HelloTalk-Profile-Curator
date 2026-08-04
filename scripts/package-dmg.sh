@@ -19,10 +19,13 @@ cp "$project_dir/Packaging/Info.plist" "$staged_bundle/Contents/Info.plist"
 
 if [[ "$signing_identity" == "-" ]]; then
   timestamp_option="--timestamp=none"
+  requirements_options=(--requirements '=designated => identifier "local.profilecurator.app"')
 else
   timestamp_option="--timestamp"
+  requirements_options=()
 fi
 codesign --force --sign "$signing_identity" --options runtime "$timestamp_option" \
+  "${requirements_options[@]}" \
   --entitlements "$project_dir/Packaging/ProfileCurator.entitlements" "$staged_bundle"
 codesign --verify --deep --strict --verbose=2 "$staged_bundle"
 
