@@ -3,6 +3,16 @@ import Foundation
 public struct ProfileInteractionSafety: Sendable {
     public init() {}
 
+    /// A single large upward wheel event can leave HelloTalk between Personal
+    /// Info and the true profile header while its sticky age/social controls
+    /// already resemble `profileTop`. Use enough independent upward passes to
+    /// cover the distance scanned, plus a buffer that reaches the hard top.
+    public func returnToTopScrollPasses(afterDownwardScrollAttempts attempts: Int) -> Int {
+        let boundedAttempts = min(10, max(0, attempts))
+        let distanceEquivalent = Int(ceil(Double(boundedAttempts * 7) / 12.0))
+        return min(10, max(4, distanceEquivalent + 2))
+    }
+
     public func tabAction(named tab: String, in observations: [OCRObservation]) -> PlannedAction? {
         let normalizedTab = normalize(tab)
         guard let anchor = observations

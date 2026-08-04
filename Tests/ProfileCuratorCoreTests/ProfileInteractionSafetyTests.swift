@@ -56,6 +56,13 @@ final class ProfileInteractionSafetyTests: XCTestCase {
         XCTAssertFalse(exclusion.bounds.contains(action.point))
     }
 
+    func testReturnToTopUsesMultiplePassesAndScalesWithProfileDepth() {
+        XCTAssertEqual(safety.returnToTopScrollPasses(afterDownwardScrollAttempts: 0), 4)
+        XCTAssertEqual(safety.returnToTopScrollPasses(afterDownwardScrollAttempts: 2), 4)
+        XCTAssertEqual(safety.returnToTopScrollPasses(afterDownwardScrollAttempts: 8), 7)
+        XCTAssertEqual(safety.returnToTopScrollPasses(afterDownwardScrollAttempts: 99), 8)
+    }
+
     private func observation(
         _ text: String,
         x: Double,

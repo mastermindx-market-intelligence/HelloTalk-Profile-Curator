@@ -124,6 +124,7 @@ final class InspectorViewModel: ObservableObject {
     private var automationPhase: AutomationPhase = .acquireSeed
     private var automationAboutMeSelected = false
     private var automationScrollAttempts = 0
+    private var automationReturnToTopScrollsRemaining = 0
     private var automationNoProgressCount = 0
     private var automationUnknownCount = 0
     private var automationMomentKeys: Set<String> = []
@@ -299,6 +300,7 @@ final class InspectorViewModel: ObservableObject {
         automationPhase = .acquireSeed
         automationAboutMeSelected = false
         automationScrollAttempts = 0
+        automationReturnToTopScrollsRemaining = 0
         automationNoProgressCount = 0
         automationUnknownCount = 0
         automationMomentKeys = []
@@ -570,8 +572,8 @@ final class InspectorViewModel: ObservableObject {
     private func handleProfileTop(_ snapshot: ObservationSnapshot) async throws {
         switch automationPhase {
         case .returnToTop:
-            automationPhase = .openPFP
-            fallthrough
+            try await continueReturnToProfileTop(previousFingerprint: snapshot.fingerprint)
+
         case .openPFP:
             let avatar = try calibratedAction(
                 context: .profile,
@@ -618,9 +620,17 @@ final class InspectorViewModel: ObservableObject {
 
     private func handlePersonalInfo() async throws {
         switch automationPhase {
-        case .returnToTop, .openPFP:
+        case .returnToTop:
+            try await continueReturnToProfileTop(previousFingerprint: observationSnapshot?.fingerprint)
+
+        case .openPFP:
+            // The planned passes finished but Personal Info is still visible,
+            // so the profile began farther down than the scan counter knew.
+            // Add another bounded buffer; never click the avatar coordinate on
+            // a non-header screen.
             automationPhase = .returnToTop
-            _ = try await performVerticalScroll(lines: 10, context: .profile, previousFingerprint: observationSnapshot?.fingerprint)
+            automationReturnToTopScrollsRemaining = 4
+            try await continueReturnToProfileTop(previousFingerprint: observationSnapshot?.fingerprint)
 
         case .seekSuggestions, .exitMoments, .openRecommendation:
             automationPhase = .seekSuggestions
@@ -639,8 +649,11 @@ final class InspectorViewModel: ObservableObject {
                 }
                 automationCollectedUsername = username
                 automationPhase = .returnToTop
+                automationReturnToTopScrollsRemaining = profileInteractionSafety.returnToTopScrollPasses(
+                    afterDownwardScrollAttempts: automationScrollAttempts
+                )
                 automationScrollAttempts = 0
-                _ = try await performVerticalScroll(lines: 12, context: .profile, previousFingerprint: observationSnapshot?.fingerprint)
+                try await continueReturnToProfileTop(previousFingerprint: observationSnapshot?.fingerprint)
             case .routingOnly(let reason):
                 automationStatus = "Routing past ineligible profile · \(reason)"
                 automationPhase = .seekSuggestions
@@ -855,12 +868,11 @@ final class InspectorViewModel: ObservableObject {
                 unchangedIsAllowed: true
             )
         case .returnToTop, .openPFP:
-            _ = try await performVerticalScroll(
-                lines: 10,
-                context: .profile,
-                previousFingerprint: snapshot.fingerprint,
-                unchangedIsAllowed: true
-            )
+            if automationPhase == .openPFP {
+                automationPhase = .returnToTop
+                automationReturnToTopScrollsRemaining = 4
+            }
+            try await continueReturnToProfileTop(previousFingerprint: snapshot.fingerprint)
         case .scanMoments:
             _ = try await performVerticalScroll(
                 lines: -6,
@@ -938,6 +950,27 @@ final class InspectorViewModel: ObservableObject {
         }
         await liveInputExecutor.resolvePostcondition(passed: false)
         throw AutomationRuntimeError.postconditionFailed(lastResult?.summary ?? "No verification frame")
+    }
+
+    private func continueReturnToProfileTop(previousFingerprint: String?) async throws {
+        if automationReturnToTopScrollsRemaining <= 0 {
+            automationPhase = .openPFP
+            return
+        }
+        let remainingBeforeScroll = automationReturnToTopScrollsRemaining
+        automationStatus = "Returning to profile header · \(remainingBeforeScroll) upward pass(es) remaining"
+        _ = try await performVerticalScroll(
+            lines: 12,
+            context: .profile,
+            previousFingerprint: previousFingerprint,
+            unchangedIsAllowed: true
+        )
+        automationReturnToTopScrollsRemaining -= 1
+        if automationReturnToTopScrollsRemaining == 0 {
+            // The next observation must independently classify as profileTop
+            // before handleProfileTop is allowed to click the avatar.
+            automationPhase = .openPFP
+        }
     }
 
     @discardableResult
@@ -1096,6 +1129,7 @@ final class InspectorViewModel: ObservableObject {
         automationCollectedUsername = nil
         automationAboutMeSelected = false
         automationScrollAttempts = 0
+        automationReturnToTopScrollsRemaining = 0
         automationNoProgressCount = 0
         automationUnknownCount = 0
         automationMomentKeys = []
