@@ -4,6 +4,7 @@ import ProfileCuratorCore
 
 private enum AutomationPhase: String {
     case acquireSeed = "Finding a profile"
+    case acquireProfileTop = "Opening profile header"
     case scanProfile = "Reading profile"
     case verifyPersonalInfo = "Verifying Personal Info"
     case returnToTop = "Returning to profile header"
@@ -355,6 +356,10 @@ final class InspectorViewModel: ObservableObject {
 
     private func runAutonomousCollection() async {
         do {
+            // Cancellation can interrupt verification after input was emitted.
+            // A new run owns a fresh postcondition sequence and must not inherit
+            // that stale pending-action latch.
+            await liveInputExecutor.resolvePostcondition(passed: false)
             try await prepareAutomationWindow()
             while !Task.isCancelled && automationRunState == .running {
                 let snapshot = try await captureAutomationFrame()
@@ -469,6 +474,10 @@ final class InspectorViewModel: ObservableObject {
             try await handlePersonalInfo()
 
         case .suggestedProfilesGallery:
+            if automationPhase == .acquireProfileTop {
+                try await continueAcquireProfileTop(previousFingerprint: snapshot.fingerprint)
+                return
+            }
             if automationPhase != .openRecommendation {
                 automationScrollAttempts = 0
                 automationNoProgressCount = 0
@@ -491,6 +500,9 @@ final class InspectorViewModel: ObservableObject {
             automationPhase = .openMoments
 
         case .momentsFeed:
+            if automationPhase == .acquireSeed, currentCollectedProfile() != nil {
+                automationPhase = .scanMoments
+            }
             if automationPhase == .exitMoments {
                 try await finishMediaCollection(snapshot)
                 return
@@ -574,6 +586,15 @@ final class InspectorViewModel: ObservableObject {
 
     private func handleProfileTop(_ snapshot: ObservationSnapshot) async throws {
         switch automationPhase {
+        case .acquireProfileTop:
+            if automationReturnToTopScrollsRemaining > 0 {
+                try await continueAcquireProfileTop(previousFingerprint: snapshot.fingerprint)
+                return
+            }
+            automationPhase = .scanProfile
+            automationScrollAttempts = 0
+            fallthrough
+
         case .returnToTop:
             try await continueReturnToProfileTop(previousFingerprint: snapshot.fingerprint)
 
@@ -623,6 +644,9 @@ final class InspectorViewModel: ObservableObject {
 
     private func handlePersonalInfo() async throws {
         switch automationPhase {
+        case .acquireProfileTop:
+            try await continueAcquireProfileTop(previousFingerprint: observationSnapshot?.fingerprint)
+
         case .returnToTop:
             try await continueReturnToProfileTop(previousFingerprint: observationSnapshot?.fingerprint)
 
@@ -666,7 +690,16 @@ final class InspectorViewModel: ObservableObject {
             return
         }
 
-        switch profileEligibilityDecision {
+        let decision = profileEligibilityDecision
+        let locationLabel = profileAccumulator.location?.city
+            ?? profileAccumulator.location?.province
+            ?? profileAccumulator.location?.country
+            ?? "missing"
+        recordEvent(
+            .observation,
+            summary: "Eligibility · age \(profileAccumulator.age.map(String.init) ?? "missing") · gender \(profileAccumulator.gender.rawValue) · MBTI \(profileAccumulator.mbti?.rawValue ?? "missing") · location \(locationLabel) score \(profileAccumulator.location?.score ?? 10) · \(String(describing: decision))"
+        )
+        switch decision {
         case .collectPrimary, .collectSecondary, .collectPreferredLocationNoMBTI, .collectUnknownLocationNoMBTI:
             checkpointVerifiedProfile()
             guard collectedProfileID != nil, let username = profileAccumulator.username else {
@@ -891,8 +924,10 @@ final class InspectorViewModel: ObservableObject {
         recommendationLedger.recordOpened(candidate, decision: decision)
         if let username = next.username { recommendationLedger.recordVerifiedProfileKey(username) }
         prepareForNewProfile()
-        automationPhase = .scanProfile
+        automationPhase = .acquireProfileTop
         automationScrollAttempts = 0
+        automationReturnToTopScrollsRemaining = 4
+        try await continueAcquireProfileTop(previousFingerprint: next.fingerprint)
     }
 
     private func recoverFromUnknownScreen(_ snapshot: ObservationSnapshot) async throws {
@@ -902,6 +937,9 @@ final class InspectorViewModel: ObservableObject {
         }
 
         switch automationPhase {
+        case .acquireProfileTop:
+            try await continueAcquireProfileTop(previousFingerprint: snapshot.fingerprint)
+
         case .scanProfile, .seekSuggestions, .exitMoments, .openRecommendation:
             automationScrollAttempts += 1
             guard automationScrollAttempts <= 14 else {
@@ -1023,6 +1061,24 @@ final class InspectorViewModel: ObservableObject {
             // before handleProfileTop is allowed to click the avatar.
             automationPhase = .openPFP
         }
+    }
+
+    private func continueAcquireProfileTop(previousFingerprint: String?) async throws {
+        guard automationScrollAttempts < 10 else {
+            throw AutomationRuntimeError.unknownState("The newly opened profile did not return to its header after 10 bounded upward passes")
+        }
+        if automationReturnToTopScrollsRemaining <= 0 {
+            automationReturnToTopScrollsRemaining = 2
+        }
+        automationScrollAttempts += 1
+        automationStatus = "Opening new profile header · upward pass \(automationScrollAttempts)/10"
+        _ = try await performVerticalScroll(
+            lines: 12,
+            context: .profile,
+            previousFingerprint: previousFingerprint,
+            unchangedIsAllowed: true
+        )
+        automationReturnToTopScrollsRemaining -= 1
     }
 
     @discardableResult
@@ -1891,6 +1947,7 @@ final class InspectorViewModel: ObservableObject {
 
         let automationCanTraverseUnknown = automationRunState == .running && [
             AutomationPhase.scanProfile,
+            .acquireProfileTop,
             .verifyPersonalInfo,
             .returnToTop,
             .scanMoments,

@@ -64,6 +64,10 @@ public struct RotatingLocationBadgeParser: Sendable {
         pattern: #"(?:^|\s)(\d{1,5})\s+PEOPLE\s+NEARBY(?:$|\s)"#,
         options: [.caseInsensitive]
     )
+    private static let badgeLocationWithoutTimeExpression = try! NSRegularExpression(
+        pattern: #"^[•·]?\s*(.{2,48}?),\s*(CHINA|UNITED STATES|USA|AUSTRALIA|UNITED KINGDOM|UK|CANADA)\s*$"#,
+        options: [.caseInsensitive]
+    )
 
     private let locationNormalizer = LocationNormalizer()
 
@@ -74,8 +78,11 @@ public struct RotatingLocationBadgeParser: Sendable {
             guard observation.confidence >= minimumConfidence else { return nil }
             let text = observation.text.trimmingCharacters(in: .whitespacesAndNewlines)
             let range = NSRange(text.startIndex..<text.endIndex, in: text)
-            guard
-                let match = Self.locationExpression.firstMatch(in: text, range: range),
+            let timedMatch = Self.locationExpression.firstMatch(in: text, range: range)
+            let badgeOnlyMatch = isPlausibleBadgeBounds(observation.bounds)
+                ? Self.badgeLocationWithoutTimeExpression.firstMatch(in: text, range: range)
+                : nil
+            guard let match = timedMatch ?? badgeOnlyMatch,
                 let cityRange = Range(match.range(at: 1), in: text),
                 let countryRange = Range(match.range(at: 2), in: text)
             else {
@@ -90,6 +97,13 @@ public struct RotatingLocationBadgeParser: Sendable {
                 bounds: observation.bounds
             )
         }
+    }
+
+    private func isPlausibleBadgeBounds(_ bounds: NormalizedRect) -> Bool {
+        bounds.minX >= 0.35
+            && bounds.minY >= 0.10
+            && bounds.maxY <= 0.45
+            && bounds.height <= 0.09
     }
 
     public func nearbySamples(in observations: [OCRObservation], minimumConfidence: Float = 0.55) -> [NearbyCountSample] {

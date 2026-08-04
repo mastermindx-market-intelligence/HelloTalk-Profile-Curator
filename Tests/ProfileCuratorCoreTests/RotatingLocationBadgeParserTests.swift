@@ -40,6 +40,35 @@ final class RotatingLocationBadgeParserTests: XCTestCase {
         XCTAssertEqual(result.source?.countryText, "China")
     }
 
+    func testBadgeLocationStillResolvesWhenVisionSplitsOffOrDropsTime() {
+        let locationOnly = [
+            OCRObservation(text: "Guangzhou, China", confidence: 0.93, bounds: bounds),
+            OCRObservation(
+                text: "6:58pm",
+                confidence: 0.88,
+                bounds: NormalizedRect(x: 0.84, y: 0.18, width: 0.12, height: 0.04)
+            )
+        ]
+
+        let result = RotatingLocationBadgeParser().resolve(frames: [locationOnly])
+
+        XCTAssertEqual(result.location?.city, "Guangzhou")
+        XCTAssertEqual(result.location?.tier, 2)
+        XCTAssertEqual(result.location?.score, 85)
+    }
+
+    func testCityCountryTextOutsideBadgeGeometryIsNotAccepted() {
+        let profileBody = [
+            OCRObservation(
+                text: "Guangzhou, China",
+                confidence: 0.99,
+                bounds: NormalizedRect(x: 0.08, y: 0.70, width: 0.34, height: 0.04)
+            )
+        ]
+
+        XCTAssertNil(RotatingLocationBadgeParser().resolve(frames: [profileBody]).location)
+    }
+
     func testMapLabelsWithoutRotatingBadgeNeverBecomeProfileLocation() {
         let mapLabels = [
             OCRObservation(text: "Nanjing", confidence: 0.99, bounds: NormalizedRect(x: 0.13, y: 0.15, width: 0.18, height: 0.03)),
