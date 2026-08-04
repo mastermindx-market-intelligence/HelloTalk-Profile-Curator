@@ -27,6 +27,25 @@ final class ProfileHeaderParserTests: XCTestCase {
         XCTAssertNil(ProfileHeaderParser().bestAge(in: observations))
     }
 
+    func testHeaderAgeBeatsStandaloneLearningStatistic() {
+        let observations = [
+            OCRObservation(text: "20", confidence: 0.90, bounds: NormalizedRect(x: 0.27, y: 0.255, width: 0.07, height: 0.025)),
+            OCRObservation(text: "@a_adelyn256", confidence: 0.97, bounds: NormalizedRect(x: 0.07, y: 0.30, width: 0.29, height: 0.025)),
+            OCRObservation(text: "24", confidence: 0.99, bounds: NormalizedRect(x: 0.12, y: 0.59, width: 0.06, height: 0.025))
+        ]
+
+        XCTAssertEqual(ProfileHeaderParser().bestHeaderAge(in: observations)?.age, 20)
+    }
+
+    func testLearningStatisticWithoutVisibleUsernameIsNotHeaderAge() {
+        let observations = [
+            OCRObservation(text: "24", confidence: 0.99, bounds: NormalizedRect(x: 0.12, y: 0.31, width: 0.06, height: 0.025)),
+            OCRObservation(text: "31 Points", confidence: 0.99, bounds: NormalizedRect(x: 0.52, y: 0.31, width: 0.18, height: 0.025))
+        ]
+
+        XCTAssertNil(ProfileHeaderParser().bestHeaderAge(in: observations))
+    }
+
     func testKnownAIAnchorCorrectionIsNarrow() {
         let matcher = OCRAnchorMatcher()
         XCTAssertTrue(matcher.contains(anchor: "AI Photo Gift", in: "Al Photo Gift · Avatar Effect"))

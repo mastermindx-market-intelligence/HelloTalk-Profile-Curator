@@ -189,7 +189,7 @@ final class InspectorViewModel: ObservableObject {
 
     var detectedProfileAge: ProfileAgeMatch? {
         guard let analysis else { return nil }
-        return profileHeaderParser.bestAge(in: analysis.text)
+        return profileHeaderParser.bestHeaderAge(in: analysis.text)
     }
 
     var detectedGenderBadge: GenderBadgeEvidence? {
@@ -967,6 +967,12 @@ final class InspectorViewModel: ObservableObject {
     }
 
     private func scanVisibleMoments(_ snapshot: ObservationSnapshot) async throws {
+        if EmptyMomentsStateDetector().matches(analysis?.text ?? []) {
+            recordEvent(.observation, summary: "Empty Moments feed verified · skipping media scan")
+            automationStatus = "No Moments posted · finishing profile"
+            try await finishMediaCollection(snapshot)
+            return
+        }
         if let observedCount = MomentPostCountParser().count(in: analysis?.text ?? []) {
             automationDeclaredMomentPostCount = observedCount
         }
@@ -2201,8 +2207,8 @@ final class InspectorViewModel: ObservableObject {
         profileAccumulator.observe(
             snapshot: snapshot,
             analysis: result,
-            age: profileHeaderParser.bestAge(in: result.text),
-            gender: profileHeaderParser.bestAge(in: result.text).map {
+            age: profileHeaderParser.bestHeaderAge(in: result.text),
+            gender: profileHeaderParser.bestHeaderAge(in: result.text).map {
                 genderBadgeClassifier.classify(image: cgImage, ageMatch: $0).hint
             },
             // Personal Info tiles can be very small in the mirrored window.
@@ -2427,7 +2433,10 @@ private struct ProfileObservationAccumulator {
             self = ProfileObservationAccumulator(username: observed)
         }
         if username == nil { username = snapshot.username }
-        if let age { self.age = age.age }
+        // The first header-bound age is authoritative for this visit. Later
+        // Personal Info and Moments frames contain unrelated standalone
+        // counters (for example translation count 24) and must not replace it.
+        if self.age == nil, let age { self.age = age.age }
         if let gender, gender != .unknown { self.gender = gender }
         if let mbti { self.mbti = mbti }
         if let location,

@@ -6,6 +6,23 @@ public enum MomentThumbnailSamplingPolicy {
     public static let intervalMilliseconds = 700
 }
 
+public struct EmptyMomentsStateDetector: Sendable {
+    public init() {}
+
+    public func matches(_ observations: [OCRObservation]) -> Bool {
+        let text = observations.map(\.text)
+            .joined(separator: " ")
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+            .replacingOccurrences(of: "’", with: "'")
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        return text.contains("hasn't posted yet")
+            || text.contains("hasnt posted yet")
+            || text.contains("has not posted yet")
+            || text.contains("no moments")
+    }
+}
+
 public struct MomentPostCountParser: Sendable {
     public init() {}
 

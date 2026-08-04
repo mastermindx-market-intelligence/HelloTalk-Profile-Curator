@@ -125,6 +125,16 @@ final class NavigationStateDetectorTests: XCTestCase {
         XCTAssertEqual(result.kind, .momentsFeed)
     }
 
+    func testHasntPostedYetIsRecognizedAsEmptyMomentsFeed() {
+        let result = NavigationStateDetector().classify(fixture([
+            "About Me", "Moments", "Achievements", "青黛 hasn't posted yet — send a Moment", "Follow", "Say Hi"
+        ]))
+
+        XCTAssertEqual(result.kind, .momentsFeed)
+        XCTAssertEqual(result.navigationState, .collectMoments)
+        XCTAssertTrue(result.evidence.contains("Empty Moments state"))
+    }
+
     func testProfileOverflowMenuIsExplicitlyRecognized() {
         let result = NavigationStateDetector().classify(fixture([
             "Add Nickname/Notes", "Share to Partner", "Hide this user's Moments",

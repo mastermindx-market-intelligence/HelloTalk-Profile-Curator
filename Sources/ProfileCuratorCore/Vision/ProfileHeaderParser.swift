@@ -55,6 +55,28 @@ public struct ProfileHeaderParser: Sendable {
     public func bestAge(in observations: [OCRObservation], minimumConfidence: Float = 0.65) -> ProfileAgeMatch? {
         ageMatches(in: observations, minimumConfidence: minimumConfidence).first
     }
+
+    /// Profile pages contain many standalone counters that look like ages
+    /// (translations, points, dates). For persisted age evidence, require the
+    /// age token to be spatially tied to the visible @username header.
+    public func bestHeaderAge(
+        in observations: [OCRObservation],
+        minimumConfidence: Float = 0.65
+    ) -> ProfileAgeMatch? {
+        guard let username = observations
+            .filter({
+                $0.confidence >= 0.55
+                    && $0.text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("@")
+            })
+            .min(by: { $0.bounds.minY < $1.bounds.minY }) else {
+            return nil
+        }
+        return ageMatches(in: observations, minimumConfidence: minimumConfidence).first { match in
+            let verticalDistance = abs(match.source.bounds.center.y - username.bounds.center.y)
+            let isNearHeaderLine = match.source.bounds.minY <= username.bounds.maxY + 0.055
+            return verticalDistance <= 0.12 && isNearHeaderLine
+        }
+    }
 }
 
 public struct ProfileDisplayNameParser: Sendable {

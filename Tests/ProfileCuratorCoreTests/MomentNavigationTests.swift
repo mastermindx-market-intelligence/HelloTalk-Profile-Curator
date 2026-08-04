@@ -4,6 +4,18 @@ import XCTest
 @testable import ProfileCuratorCore
 
 final class MomentNavigationTests: XCTestCase {
+    func testEmptyMomentsDetectorHandlesObservedAndStraightApostrophes() {
+        let detector = EmptyMomentsStateDetector()
+        XCTAssertTrue(detector.matches([
+            observation("青黛 hasn't posted yet — send a Moment", x: 0.08, y: 0.52, width: 0.72)
+        ]))
+        XCTAssertTrue(detector.matches([
+            observation("青黛 hasn’t posted yet", x: 0.08, y: 0.52, width: 0.52)
+        ]))
+        XCTAssertFalse(detector.matches([
+            observation("Posted a Moment yesterday", x: 0.08, y: 0.52, width: 0.52)
+        ]))
+    }
     func testOptionalLiveTopTimelineVideoTargetsVideoAboveAd() throws {
         guard let path = ProcessInfo.processInfo.environment["HELLOTALK_TOP_TIMELINE_VIDEO"] else {
             throw XCTSkip("No live top-timeline video fixture supplied")
@@ -766,6 +778,20 @@ final class MomentNavigationTests: XCTestCase {
             }
         }
         return try XCTUnwrap(context.makeImage())
+    }
+
+    private func observation(
+        _ text: String,
+        x: Double,
+        y: Double,
+        width: Double,
+        height: Double = 0.03
+    ) -> OCRObservation {
+        OCRObservation(
+            text: text,
+            confidence: 0.95,
+            bounds: NormalizedRect(x: x, y: y, width: width, height: height)
+        )
     }
 }
 

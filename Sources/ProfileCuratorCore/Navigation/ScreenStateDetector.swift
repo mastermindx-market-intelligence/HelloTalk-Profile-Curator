@@ -54,6 +54,9 @@ public struct NavigationStateDetector: Sendable {
                 ["Profile overflow actions and Cancel button"]
             )
         }
+        if EmptyMomentsStateDetector().matches(analysis.text) {
+            return classification(.momentsFeed, .collectMoments, 0.99, ["Empty Moments state"])
+        }
         if containsMomentsFeedAnchors(in: analysis) {
             return classification(.momentsFeed, .collectMoments, 0.9, ["Moments feed tab and activity anchors"])
         }
