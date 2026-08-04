@@ -107,7 +107,8 @@ public struct NavigationStateDetector: Sendable {
             )
         }
         if contains("Custom Search", in: text) ||
-            (contains("Active", in: text) && contains("Age", in: text) && contains("Search", in: text)) {
+            (contains("Active", in: text) && contains("Age", in: text) && contains("Search", in: text)) ||
+            containsCustomSearchResultRows(in: analysis) {
             return classification(.customSearch, .acquireSeedProfile, 0.9, ["Custom Search controls"])
         }
         if contains("Connect", in: text) && (contains("Say Hi", in: text) || contains("Nearby", in: text)) {
@@ -127,6 +128,17 @@ public struct NavigationStateDetector: Sendable {
 
     private func containsGalleryCounter(in text: String) -> Bool {
         text.range(of: #"\b\d{1,2}\s*/\s*\d{1,2}\b"#, options: .regularExpression) != nil
+    }
+
+    private func containsCustomSearchResultRows(in analysis: FixtureAnalysis) -> Bool {
+        let locations = analysis.text.filter { observation in
+            guard observation.bounds.minY >= 0.12, observation.bounds.maxY <= 0.95 else { return false }
+            return observation.text.range(
+                of: #"\b[A-Z][A-Z .'-]{1,40},\s*(?:CHINA|UNITED STATES|USA|AUSTRALIA|UNITED KINGDOM|UK|CANADA)\b"#,
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil
+        }
+        return locations.count >= 2
     }
 
     private func containsAdvertisingInterstitial(in text: String) -> Bool {

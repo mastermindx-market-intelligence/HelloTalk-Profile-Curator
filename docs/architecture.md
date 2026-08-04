@@ -21,19 +21,18 @@ The Inspector associates visible card names with nearby optional age badges and 
 
 Every visible-card proposal automatically arms a username-change postcondition from the current captured profile. The graph ledger records the card key and verified opened username only after the next captured frame passes that postcondition; failed or inconclusive transitions do not consume or deduplicate a node.
 
-Custom Search is a seed/fallback path, not the main traversal loop. Its results are restricted to currently active users, its rows omit exact age/gender, and selecting the Female filter opened a paid subscription offer during supervised testing. The safe loop is therefore:
+Custom Search is also available as a complete autonomous run mode. Its inventory is restricted to currently active users, but each row exposes a precise city before opening. Rows omit reliable age/gender and the Female filter is paid, so every opened profile still re-verifies the female badge and age. Custom Search results open on Moments first; the collector selects About Me/Profile before scanning personality. At the result-list bottom it returns to the top and activates the exact OCR-anchored Search button to refresh.
 
 ```text
-Acquire female age-18–21 seed through age-filtered Custom Search or Connect
+Scan visible Custom Search rows for configured target cities
+  -> open the row avatar (never a social control)
+  -> switch from the Moments-first landing page to About Me/Profile
   -> verify opened profile age and female badge
   -> scan About Me for target MBTI
-  -> seek Suggested for You at profile bottom
-  -> inspect visible gallery cards
-  -> open a safe visible photo and verify profile identity changed
-  -> re-verify age and female badge on every opened profile
-  -> collect only eligible targets; otherwise mark the node routing-only
-  -> use the new profile's visible gallery as the next inventory page
-  -> return to a seed feed only when the gallery is absent or exhausted
+  -> collect only eligible targets
+  -> return to the preserved Custom Search result position
+  -> continue downward through unvisited rows
+  -> at bottom, return to top and re-run Search for refreshed active inventory
 ```
 
 ## Module map

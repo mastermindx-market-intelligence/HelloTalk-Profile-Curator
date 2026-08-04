@@ -326,6 +326,14 @@ struct ContentView: View {
     private var automaticCollectionSection: some View {
         GroupBox("Automatic collection") {
             VStack(alignment: .leading, spacing: 9) {
+                Picker("Run mode", selection: $model.collectionRunMode) {
+                    ForEach(CollectionRunMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(model.automationRunState == .running || model.automationRunState == .paused)
+
                 HStack {
                     Label(model.automationRunState.rawValue, systemImage: model.automationRunState == .running ? "gearshape.2.fill" : "circle.fill")
                         .foregroundStyle(model.automationRunState == .running ? .green : .secondary)
@@ -336,7 +344,9 @@ struct ContentView: View {
                 Text(model.automationStatus)
                     .font(.callout)
                 LabeledContent("Live actions", value: "\(model.automationActionCount)")
-                Text("Automatically visits profiles, verifies female age 18–21 and target MBTI, captures PFP/Moment still frames, retains up to 10 of 20 scanned photos, queues Qwen, then follows visible similar profiles.")
+                Text(model.collectionRunMode == .customSearch
+                    ? "Scans visible Custom Search rows by target city, opens each result's Moments-first page, switches to Profile, verifies age/gender/MBTI, collects media, returns to results, and refreshes at the bottom."
+                    : "Visits profiles, verifies female age 18–21 and target MBTI, captures PFP/Moment still frames, queues Qwen, then follows visible similar profiles.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("Never interacts with Say Hi, Follow, Like, Gift, comments, or messaging.")

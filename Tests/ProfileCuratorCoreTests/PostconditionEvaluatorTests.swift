@@ -7,6 +7,26 @@ final class PostconditionEvaluatorTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(MomentMediaLoadingPolicy.verificationDelaysMilliseconds.count, 8)
     }
 
+    func testCustomSearchAndMomentsFirstPostconditionsAreExact() {
+        let evaluator = NavigationPostconditionEvaluator()
+        let custom = makeSnapshot(
+            fingerprint: "custom",
+            username: nil,
+            text: "Custom Search",
+            kind: .customSearch
+        )
+        let moments = makeSnapshot(
+            fingerprint: "moments",
+            username: "@a",
+            text: "About Me Moments Achievements",
+            kind: .momentsFeed
+        )
+
+        XCTAssertEqual(evaluator.evaluate(.customSearchDetected, against: custom).status, .passed)
+        XCTAssertEqual(evaluator.evaluate(.momentsFeedDetected, against: moments).status, .passed)
+        XCTAssertEqual(evaluator.evaluate(.customSearchDetected, against: moments).status, .failed)
+    }
+
     func testAnchorAbsentRequiresPopupTextToDisappear() {
         let evaluator = NavigationPostconditionEvaluator()
         let visible = makeSnapshot(fingerprint: "same", username: "@a", text: "Total learning points")
@@ -56,12 +76,13 @@ final class PostconditionEvaluatorTests: XCTestCase {
     private func makeSnapshot(
         fingerprint: String,
         username: String? = nil,
-        text: String = "About Me"
+        text: String = "About Me",
+        kind: DetectedScreenKind = .profileTop
     ) -> ObservationSnapshot {
         ObservationSnapshot(
             fingerprint: fingerprint,
             screen: ScreenClassification(
-                kind: .profileTop,
+                kind: kind,
                 navigationState: .profileTop,
                 confidence: 0.9,
                 evidence: []

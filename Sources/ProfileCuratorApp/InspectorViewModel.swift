@@ -2,8 +2,19 @@ import AppKit
 import Foundation
 import ProfileCuratorCore
 
+enum CollectionRunMode: String, CaseIterable, Identifiable {
+    case similarProfiles = "Similar profiles"
+    case customSearch = "Custom Search"
+
+    var id: String { rawValue }
+}
+
 private enum AutomationPhase: String {
     case acquireSeed = "Finding a profile"
+    case scanCustomSearch = "Scanning Custom Search"
+    case openCustomSearchResult = "Opening search result"
+    case refreshCustomSearch = "Refreshing Custom Search"
+    case returnToCustomSearch = "Returning to Custom Search"
     case acquireProfileTop = "Opening profile header"
     case scanProfile = "Reading profile"
     case verifyPersonalInfo = "Verifying Personal Info"
@@ -89,6 +100,7 @@ final class InspectorViewModel: ObservableObject {
     @Published var automationStatus = "Ready to collect automatically"
     @Published var automationActionCount = 0
     @Published var automationProfileCount = 0
+    @Published var collectionRunMode: CollectionRunMode = .similarProfiles
 
     let previewExclusions = DefaultInspectorCalibration.previewExclusions
 
@@ -105,6 +117,8 @@ final class InspectorViewModel: ObservableObject {
     private let sessionPolicy = NavigationSessionPolicy.conservativeDefault
     private let discoveryPolicy = DiscoveryPolicy.observedDefault
     private let visibleTargetDetector = VisibleRecommendationTargetDetector()
+    private let customSearchTargetDetector = CustomSearchResultTargetDetector()
+    private let customSearchInteractionPlanner = CustomSearchInteractionPlanner()
     private let momentThumbnailDetector = MomentThumbnailTargetDetector()
     private let momentGalleryCounterParser = MomentGalleryCounterParser()
     private let momentDismissPlanner = MomentViewerDismissPlanner()
@@ -136,6 +150,9 @@ final class InspectorViewModel: ObservableObject {
     private var automationViewerChromeProbed = false
     private var automationViewerIndices: Set<Int> = []
     private var automationCollectedUsername: String?
+    private var automationCustomSearchVisitedKeys: Set<String> = []
+    private var automationCustomSearchRefreshCount = 0
+    private var automationCustomSearchCandidateLocation: NormalizedLocation?
     private var automationLastFingerprint: String?
     private var automationWindowFrame: CGRect?
 
@@ -300,7 +317,7 @@ final class InspectorViewModel: ObservableObject {
         }
 
         sessionState = NavigationSessionState()
-        automationPhase = .acquireSeed
+        automationPhase = collectionRunMode == .customSearch ? .scanCustomSearch : .acquireSeed
         automationAboutMeSelected = false
         automationScrollAttempts = 0
         automationReturnToTopScrollsRemaining = 0
@@ -312,6 +329,9 @@ final class InspectorViewModel: ObservableObject {
         automationMomentFeedPage = 0
         automationViewerChromeProbed = false
         automationViewerIndices = []
+        automationCustomSearchVisitedKeys = []
+        automationCustomSearchRefreshCount = 0
+        automationCustomSearchCandidateLocation = nil
         let checkpoint = try? CollectionCheckpointStore.defaultStore().load()
         automationMomentKeys = checkpoint?.momentVisitKeys ?? []
         automationCollectedUsername = checkpoint?.currentUsername
@@ -453,6 +473,9 @@ final class InspectorViewModel: ObservableObject {
 
         switch snapshot.screen.kind {
         case .connectFeed:
+            if collectionRunMode == .customSearch {
+                throw AutomationRuntimeError.unknownState("Custom Search mode requires the Custom Search results screen")
+            }
             automationPhase = .acquireSeed
             let action = try calibratedAction(
                 context: .connectFeed,
@@ -465,7 +488,10 @@ final class InspectorViewModel: ObservableObject {
             automationPhase = .scanProfile
 
         case .customSearch:
-            throw AutomationRuntimeError.unknownState("Custom Search is a seed fallback; open one result or return to Connect")
+            guard collectionRunMode == .customSearch else {
+                throw AutomationRuntimeError.unknownState("Custom Search is not selected as the current run mode")
+            }
+            try await handleCustomSearch(snapshot)
 
         case .profileTop:
             try await handleProfileTop(snapshot)
@@ -500,6 +526,22 @@ final class InspectorViewModel: ObservableObject {
             automationPhase = .openMoments
 
         case .momentsFeed:
+            if collectionRunMode == .customSearch,
+               automationPhase == .openCustomSearchResult {
+                guard let observations = analysis?.text,
+                      let aboutMe = profileInteractionSafety.tabAction(named: "About Me", in: observations) else {
+                    throw AutomationRuntimeError.unknownState("The Custom Search result opened Moments, but the About Me/Profile tab anchor was not found")
+                }
+                _ = try await performClick(
+                    aboutMe,
+                    context: .momentsFeed,
+                    expecting: .contentHashChanged(previous: snapshot.fingerprint)
+                )
+                automationPhase = .acquireProfileTop
+                automationReturnToTopScrollsRemaining = 4
+                automationScrollAttempts = 0
+                return
+            }
             if automationPhase == .acquireSeed, currentCollectedProfile() != nil {
                 automationPhase = .scanMoments
             }
@@ -714,6 +756,10 @@ final class InspectorViewModel: ObservableObject {
             try await continueReturnToProfileTop(previousFingerprint: previousFingerprint)
         case .routingOnly(let reason):
             automationStatus = "Routing past ineligible profile · \(reason)"
+            if collectionRunMode == .customSearch {
+                try await returnToCustomSearch(context: .profile)
+                return
+            }
             automationPhase = .seekSuggestions
             automationScrollAttempts = 0
             _ = try await performVerticalScroll(
@@ -740,13 +786,153 @@ final class InspectorViewModel: ObservableObject {
         for frame in frames { try validateWindowGeometry(frame) }
         let analyses = try frames.map { try analyzer.analyze($0.image) }
         let resolution = rotatingLocationBadgeParser.resolve(frames: analyses.map(\.text))
-        temporalLocation = resolution
-        profileAccumulator.completeLocationObservation(resolution.location)
+        let resolvedLocation = resolution.location ?? automationCustomSearchCandidateLocation
+        temporalLocation = resolvedLocation.map {
+            TemporalLocationResolution(
+                location: $0,
+                source: resolution.source,
+                nearbyCountsIgnored: resolution.nearbyCountsIgnored,
+                framesExamined: resolution.framesExamined
+            )
+        } ?? resolution
+        profileAccumulator.completeLocationObservation(resolvedLocation)
         if let location = resolution.location {
             recordEvent(.observation, summary: "Location badge resolved · \(location.city ?? location.country ?? "unknown")")
+        } else if let fallback = automationCustomSearchCandidateLocation {
+            recordEvent(
+                .observation,
+                summary: "Location badge absent · retained Custom Search row location \(fallback.city ?? fallback.province ?? fallback.country ?? "unknown")"
+            )
         } else {
             recordEvent(.observation, summary: "Location badge absent · ignored \(resolution.nearbyCountsIgnored.count) nearby-count frame(s) and all map labels")
         }
+    }
+
+    private func handleCustomSearch(_ snapshot: ObservationSnapshot) async throws {
+        if automationPhase == .returnToCustomSearch {
+            prepareForNewProfile()
+            automationCustomSearchCandidateLocation = nil
+            automationPhase = .scanCustomSearch
+            automationScrollAttempts = 0
+        }
+
+        if automationPhase == .refreshCustomSearch {
+            try await continueCustomSearchRefresh(snapshot)
+            return
+        }
+
+        if automationPhase != .scanCustomSearch {
+            automationPhase = .scanCustomSearch
+        }
+        let targets = customSearchTargetDetector.targets(in: analysis?.text ?? [])
+        if targets.isEmpty,
+           automationScrollAttempts == 0,
+           let search = customSearchInteractionPlanner.searchAction(in: analysis?.text ?? []) {
+            _ = try await performClick(
+                search,
+                context: .connectFeed,
+                expecting: .customSearchDetected,
+                verificationDelaysMilliseconds: [900, 1_100, 1_400]
+            )
+            automationScrollAttempts = 1
+            automationStatus = "Custom Search submitted · scanning target cities"
+            return
+        }
+        let available = targets
+            .filter { !automationCustomSearchVisitedKeys.contains(customSearchVisitKey($0)) }
+            .sorted {
+                if $0.location.tier != $1.location.tier { return $0.location.tier < $1.location.tier }
+                return $0.photoPoint.y < $1.photoPoint.y
+            }
+            .first
+
+        if let target = available {
+            automationCustomSearchVisitedKeys.insert(customSearchVisitKey(target))
+            automationCustomSearchCandidateLocation = target.location
+            automationPhase = .openCustomSearchResult
+            automationStatus = "Custom Search · opening \(target.displayName) · \(target.location.city ?? target.location.province ?? target.location.country ?? "target city")"
+            _ = try await performClick(
+                target.plannedAction,
+                context: .connectFeed,
+                expecting: .momentsFeedDetected,
+                verificationDelaysMilliseconds: [800, 800, 1_000, 1_200, 1_500]
+            )
+            prepareForNewProfile()
+            profileAccumulator = ProfileObservationAccumulator(username: observationSnapshot?.username)
+            profileAccumulator.completeLocationObservation(target.location)
+            return
+        }
+
+        automationScrollAttempts += 1
+        if automationScrollAttempts <= 12 {
+            let changed = try await performVerticalScroll(
+                lines: -7,
+                context: .connectFeed,
+                previousFingerprint: snapshot.fingerprint,
+                unchangedIsAllowed: true
+            )
+            if changed, automationScrollAttempts < 12 { return }
+        }
+
+        automationPhase = .refreshCustomSearch
+        automationReturnToTopScrollsRemaining = 8
+        automationScrollAttempts = 0
+    }
+
+    private func continueCustomSearchRefresh(_ snapshot: ObservationSnapshot) async throws {
+        if automationReturnToTopScrollsRemaining > 0 {
+            _ = try await performVerticalScroll(
+                lines: 12,
+                context: .connectFeed,
+                previousFingerprint: snapshot.fingerprint,
+                unchangedIsAllowed: true
+            )
+            automationReturnToTopScrollsRemaining -= 1
+            return
+        }
+
+        guard let search = customSearchInteractionPlanner.searchAction(in: analysis?.text ?? []) else {
+            automationScrollAttempts += 1
+            guard automationScrollAttempts <= 4 else {
+                throw AutomationRuntimeError.unknownState("Custom Search reached the bottom, but the exact Search button anchor was not found after returning to the top")
+            }
+            automationReturnToTopScrollsRemaining = 2
+            return
+        }
+        _ = try await performClick(
+            search,
+            context: .connectFeed,
+            expecting: .customSearchDetected,
+            verificationDelaysMilliseconds: [900, 1_100, 1_400]
+        )
+        automationCustomSearchRefreshCount += 1
+        automationPhase = .scanCustomSearch
+        automationScrollAttempts = 0
+        automationStatus = "Custom Search refreshed · cycle \(automationCustomSearchRefreshCount + 1)"
+    }
+
+    private func returnToCustomSearch(context: CalibrationContext) async throws {
+        automationPhase = .returnToCustomSearch
+        let back = fallbackBackAction(rationale: "Return from the evaluated profile to Custom Search results")
+        _ = try await performClick(
+            back,
+            context: context,
+            expecting: .customSearchDetected,
+            verificationDelaysMilliseconds: [800, 800, 1_000, 1_200, 1_500]
+        )
+        prepareForNewProfile()
+        profileAccumulator = ProfileObservationAccumulator()
+        automationCustomSearchCandidateLocation = nil
+        automationPhase = .scanCustomSearch
+        automationScrollAttempts = 0
+    }
+
+    private func customSearchVisitKey(_ target: CustomSearchResultTarget) -> String {
+        guard let image = currentCGImage,
+              let avatar = WindowPhotoCropper().crop(image, to: target.safePhotoRegion) else {
+            return target.profileKey
+        }
+        return "\(target.profileKey)|\(ImagePerceptualHasher().differenceHash(avatar))"
     }
 
     private func scanVisibleMoments(_ snapshot: ObservationSnapshot) async throws {
@@ -838,6 +1024,10 @@ final class InspectorViewModel: ObservableObject {
             automationPhase = .exitMoments
             automationNoProgressCount = 0
             automationScrollAttempts = 0
+        }
+        if collectionRunMode == .customSearch {
+            try await returnToCustomSearch(context: .momentsFeed)
+            return
         }
         guard let observations = analysis?.text,
               let aboutMe = profileInteractionSafety.tabAction(named: "About Me", in: observations) else {
@@ -931,6 +1121,11 @@ final class InspectorViewModel: ObservableObject {
     }
 
     private func recoverFromUnknownScreen(_ snapshot: ObservationSnapshot) async throws {
+        if automationPhase == .scanCustomSearch || automationPhase == .refreshCustomSearch {
+            automationUnknownCount = 0
+            try await handleCustomSearch(snapshot)
+            return
+        }
         automationUnknownCount += 1
         guard automationUnknownCount <= 4 else {
             throw AutomationRuntimeError.unknownState("Four consecutive captures could not be classified")
@@ -1944,6 +2139,12 @@ final class InspectorViewModel: ObservableObject {
             location: temporalLocation?.location,
             metadata: profileMetadata
         )
+        if collectionRunMode == .customSearch,
+           let candidateLocation = automationCustomSearchCandidateLocation,
+           profileAccumulator.location == nil,
+           [.profileTop, .profilePersonalInfo, .momentsFeed].contains(snapshot.screen.kind) {
+            profileAccumulator.completeLocationObservation(candidateLocation)
+        }
 
         let automationCanTraverseUnknown = automationRunState == .running && [
             AutomationPhase.scanProfile,
@@ -1951,6 +2152,10 @@ final class InspectorViewModel: ObservableObject {
             .verifyPersonalInfo,
             .returnToTop,
             .scanMoments,
+            .scanCustomSearch,
+            .refreshCustomSearch,
+            .openCustomSearchResult,
+            .returnToCustomSearch,
             .exitMoments,
             .seekSuggestions,
             .openRecommendation

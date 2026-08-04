@@ -5,6 +5,7 @@ public enum PlannedActionKind: String, Codable, Sendable {
     case selectAboutMe
     case selectMoments
     case openRecommendationCard
+    case openCustomSearchResult
     case openMomentThumbnail
     case closeViewer
     case verticalScroll
@@ -12,6 +13,7 @@ public enum PlannedActionKind: String, Codable, Sendable {
     case back
     case showViewerChrome
     case nextViewerPhoto
+    case refreshCustomSearch
 }
 
 public struct ExclusionZone: Identifiable, Codable, Hashable, Sendable {

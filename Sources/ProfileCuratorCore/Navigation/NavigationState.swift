@@ -27,6 +27,8 @@ public enum VisiblePostcondition: Codable, Hashable, Sendable {
     case ocrAnchorAbsent(String)
     case viewerDetected
     case profilePageDetected
+    case momentsFeedDetected
+    case customSearchDetected
     case selectedTab(String)
     case profileIdentityChanged(previousUsername: String?)
 }

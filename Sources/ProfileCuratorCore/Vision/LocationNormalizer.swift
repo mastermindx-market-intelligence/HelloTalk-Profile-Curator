@@ -31,7 +31,7 @@ public struct NormalizedLocation: Codable, Hashable, Sendable {
 public struct LocationNormalizer: Sendable {
     private struct Entry: Sendable {
         let aliases: [String]
-        let city: String
+        let city: String?
         let province: String?
         let tier: Int
         let score: Int
@@ -41,9 +41,6 @@ public struct LocationNormalizer: Sendable {
         Entry(aliases: ["shenzhen", "深圳"], city: "Shenzhen", province: "Guangdong", tier: 1, score: 100),
         Entry(aliases: ["hong kong", "hongkong", "香港"], city: "Hong Kong", province: nil, tier: 2, score: 85),
         Entry(aliases: ["guangzhou", "广州", "廣州"], city: "Guangzhou", province: "Guangdong", tier: 2, score: 85),
-        Entry(aliases: ["dongguan", "东莞", "東莞"], city: "Dongguan", province: "Guangdong", tier: 2, score: 85),
-        Entry(aliases: ["foshan", "佛山"], city: "Foshan", province: "Guangdong", tier: 2, score: 85),
-        Entry(aliases: ["zhuhai", "珠海"], city: "Zhuhai", province: "Guangdong", tier: 2, score: 85),
         Entry(aliases: ["beijing", "北京"], city: "Beijing", province: nil, tier: 2, score: 85),
         Entry(aliases: ["shanghai", "上海"], city: "Shanghai", province: nil, tier: 2, score: 85),
         Entry(aliases: ["chengdu", "成都"], city: "Chengdu", province: "Sichuan", tier: 2, score: 85),
@@ -55,6 +52,14 @@ public struct LocationNormalizer: Sendable {
         Entry(aliases: ["nanjing", "南京"], city: "Nanjing", province: "Jiangsu", tier: 3, score: 70),
         Entry(aliases: ["qingdao", "青岛", "青島"], city: "Qingdao", province: "Shandong", tier: 3, score: 70),
         Entry(aliases: ["zhengzhou", "郑州", "鄭州"], city: "Zhengzhou", province: "Henan", tier: 3, score: 70),
+        Entry(aliases: ["zhuhai", "珠海"], city: "Zhuhai", province: "Guangdong", tier: 3, score: 70),
+        Entry(aliases: ["foshan", "佛山"], city: "Foshan", province: "Guangdong", tier: 3, score: 70),
+        Entry(aliases: ["dongguan", "东莞", "東莞"], city: "Dongguan", province: "Guangdong", tier: 3, score: 70),
+        Entry(aliases: ["changchun", "长春", "長春"], city: "Changchun", province: "Jilin", tier: 3, score: 70),
+        Entry(aliases: ["hainan", "海南"], city: nil, province: "Hainan", tier: 3, score: 70),
+        Entry(aliases: ["shantou", "汕头", "汕頭"], city: "Shantou", province: "Guangdong", tier: 5, score: 30),
+        Entry(aliases: ["wuxi", "无锡", "無錫"], city: "Wuxi", province: "Jiangsu", tier: 5, score: 30),
+        Entry(aliases: ["linyi", "临沂", "臨沂"], city: "Linyi", province: "Shandong", tier: 5, score: 30),
         Entry(aliases: ["xi'an", "xian", "西安"], city: "Xi'an", province: "Shaanxi", tier: 4, score: 55),
         Entry(aliases: ["xiamen", "厦门", "廈門"], city: "Xiamen", province: "Fujian", tier: 4, score: 55),
         Entry(aliases: ["shenyang", "沈阳", "瀋陽"], city: "Shenyang", province: "Liaoning", tier: 5, score: 30)

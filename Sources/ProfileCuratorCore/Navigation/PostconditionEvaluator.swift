@@ -78,6 +78,20 @@ public struct NavigationPostconditionEvaluator: Sendable {
                 success: "Profile surface detected",
                 failure: "No recognized profile surface detected"
             )
+        case .momentsFeedDetected:
+            return result(
+                condition,
+                passed: snapshot.screen.kind == .momentsFeed,
+                success: "Moments-first profile result detected",
+                failure: "Custom Search result did not open its Moments page"
+            )
+        case .customSearchDetected:
+            return result(
+                condition,
+                passed: snapshot.screen.kind == .customSearch,
+                success: "Custom Search results detected",
+                failure: "Custom Search results were not detected"
+            )
         case .selectedTab(let tab):
             return result(
                 condition,

@@ -29,6 +29,14 @@ final class NavigationStateDetectorTests: XCTestCase {
         XCTAssertEqual(result.confidence, 0)
     }
 
+    func testScrolledCustomSearchResultsRemainRecognizedWithoutHeader() {
+        let result = NavigationStateDetector().classify(fixture([
+            "Emily", "Guangzhou,China", "Fox", "Wuxi,China"
+        ]))
+
+        XCTAssertEqual(result.kind, .customSearch)
+    }
+
     func testHiddenChromeMomentViewerAllowsSmallDetectedFace() throws {
         let width = 420
         let height = 932

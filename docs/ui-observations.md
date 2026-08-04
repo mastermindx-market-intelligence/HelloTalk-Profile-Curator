@@ -65,7 +65,8 @@ All coordinates use top-left origin and normalized `0...1` values relative to th
 - Reliable profile-changed postcondition: the profile side sheet first appeared, then the full profile exposed name, handle, age/gender badge, map, and tabs.
 - Popup/ad recovery observations: a Wise ad row appeared in Connect; it was not clicked. Ads must be skipped as whole-card exclusion regions.
 - Important UI drift: one observed profile bottom stabilized after School with no Suggested for You row, while another exposed the gallery below Hometown. Navigation must support returning to a seed feed when the gallery is absent.
-- Discovery priority correction from the user: Custom Search shows only currently active users and is materially smaller. Use it to acquire a seed, then prefer the in-profile horizontal Suggested for You gallery for broader recently-active inventory.
+- Custom Search is now a second complete run mode. It is smaller and active-only, but its visible city labels make geographic prefiltering more precise than the nonfunctional horizontal gallery.
+- Opening a Custom Search result lands on Moments first. Select the exact About Me/Profile tab, then return to the result list after evaluation. When the bounded list reaches its bottom, return to the top and run Search again to refresh.
 - Similarity behavior: a gallery reached from a female profile usually shows female profiles, but this is a prior only; verify the badge on every opened profile.
 - Custom Search age filter: 18–21 can be applied and produces a dedicated feed, but result rows omit exact age and gender.
 - Custom Search Female filter: selecting Female opened a subscription purchase modal; it was closed without purchase. Runtime must not depend on this filter.

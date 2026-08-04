@@ -11,12 +11,28 @@ final class LocationNormalizerTests: XCTestCase {
         XCTAssertEqual(result.score, 100)
     }
 
-    func testOtherGuangdongCityUsesTierTwo() {
+    func testGuangzhouUsesTierTwo() {
         let result = LocationNormalizer().normalize("Guangzhou, Guangdong")
 
         XCTAssertEqual(result.city, "Guangzhou")
         XCTAssertEqual(result.tier, 2)
         XCTAssertEqual(result.score, 85)
+    }
+
+    func testRequestedTierThreeCitiesAndProvince() {
+        for value in ["Zhuhai", "Foshan", "Dongguan", "Hainan", "Changchun"] {
+            let result = LocationNormalizer().normalize(value)
+            XCTAssertEqual(result.tier, 3, value)
+            XCTAssertEqual(result.score, 70, value)
+        }
+    }
+
+    func testRequestedLastTierCities() {
+        for value in ["Shantou", "Wuxi", "Linyi"] {
+            let result = LocationNormalizer().normalize(value)
+            XCTAssertEqual(result.tier, 5, value)
+            XCTAssertEqual(result.score, 30, value)
+        }
     }
 
     func testPreferredForeignCountriesShareTopLocationScore() {
