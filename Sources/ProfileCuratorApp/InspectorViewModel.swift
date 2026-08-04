@@ -5,6 +5,7 @@ import ProfileCuratorCore
 private enum AutomationPhase: String {
     case acquireSeed = "Finding a profile"
     case scanProfile = "Reading profile"
+    case verifyPersonalInfo = "Verifying Personal Info"
     case returnToTop = "Returning to profile header"
     case openPFP = "Capturing profile photo"
     case openMoments = "Opening Moments"
@@ -125,6 +126,7 @@ final class InspectorViewModel: ObservableObject {
     private var automationAboutMeSelected = false
     private var automationScrollAttempts = 0
     private var automationReturnToTopScrollsRemaining = 0
+    private var automationPersonalInfoVerificationAttempts = 0
     private var automationNoProgressCount = 0
     private var automationUnknownCount = 0
     private var automationMomentKeys: Set<String> = []
@@ -301,6 +303,7 @@ final class InspectorViewModel: ObservableObject {
         automationAboutMeSelected = false
         automationScrollAttempts = 0
         automationReturnToTopScrollsRemaining = 0
+        automationPersonalInfoVerificationAttempts = 0
         automationNoProgressCount = 0
         automationUnknownCount = 0
         automationMomentKeys = []
@@ -640,26 +643,52 @@ final class InspectorViewModel: ObservableObject {
             }
             _ = try await performVerticalScroll(lines: -7, context: .profile, previousFingerprint: observationSnapshot?.fingerprint)
 
+        case .verifyPersonalInfo:
+            try await continuePersonalInfoVerification(previousFingerprint: observationSnapshot?.fingerprint)
+
         default:
-            switch profileEligibilityDecision {
-            case .collectPrimary, .collectSecondary, .collectPreferredLocationNoMBTI, .collectUnknownLocationNoMBTI:
-                checkpointVerifiedProfile()
-                guard collectedProfileID != nil, let username = profileAccumulator.username else {
-                    throw AutomationRuntimeError.unknownState(collectionStatus)
-                }
-                automationCollectedUsername = username
-                automationPhase = .returnToTop
-                automationReturnToTopScrollsRemaining = profileInteractionSafety.returnToTopScrollPasses(
-                    afterDownwardScrollAttempts: automationScrollAttempts
-                )
-                automationScrollAttempts = 0
-                try await continueReturnToProfileTop(previousFingerprint: observationSnapshot?.fingerprint)
-            case .routingOnly(let reason):
-                automationStatus = "Routing past ineligible profile · \(reason)"
-                automationPhase = .seekSuggestions
-                automationScrollAttempts = 0
-                _ = try await performVerticalScroll(lines: -7, context: .profile, previousFingerprint: observationSnapshot?.fingerprint)
+            automationPhase = .verifyPersonalInfo
+            try await continuePersonalInfoVerification(previousFingerprint: observationSnapshot?.fingerprint)
+        }
+    }
+
+    private func continuePersonalInfoVerification(previousFingerprint: String?) async throws {
+        if profileAccumulator.mbti == nil,
+           automationPersonalInfoVerificationAttempts < 4 {
+            automationPersonalInfoVerificationAttempts += 1
+            automationStatus = "Verifying Personal Info · MBTI scan \(automationPersonalInfoVerificationAttempts)/4"
+            _ = try await performVerticalScroll(
+                lines: -4,
+                context: .profile,
+                previousFingerprint: previousFingerprint,
+                unchangedIsAllowed: true
+            )
+            return
+        }
+
+        switch profileEligibilityDecision {
+        case .collectPrimary, .collectSecondary, .collectPreferredLocationNoMBTI, .collectUnknownLocationNoMBTI:
+            checkpointVerifiedProfile()
+            guard collectedProfileID != nil, let username = profileAccumulator.username else {
+                throw AutomationRuntimeError.unknownState(collectionStatus)
             }
+            automationCollectedUsername = username
+            automationPhase = .returnToTop
+            automationReturnToTopScrollsRemaining = profileInteractionSafety.returnToTopScrollPasses(
+                afterDownwardScrollAttempts: automationScrollAttempts + automationPersonalInfoVerificationAttempts
+            )
+            automationScrollAttempts = 0
+            try await continueReturnToProfileTop(previousFingerprint: previousFingerprint)
+        case .routingOnly(let reason):
+            automationStatus = "Routing past ineligible profile · \(reason)"
+            automationPhase = .seekSuggestions
+            automationScrollAttempts = 0
+            _ = try await performVerticalScroll(
+                lines: -7,
+                context: .profile,
+                previousFingerprint: previousFingerprint,
+                unchangedIsAllowed: true
+            )
         }
     }
 
@@ -672,8 +701,8 @@ final class InspectorViewModel: ObservableObject {
         automationStatus = "Reading rotating location badge…"
         let frames = try await WindowCaptureService().captureBurst(
             windowID: selectedWindowID,
-            frameCount: 4,
-            intervalMilliseconds: 600
+            frameCount: 7,
+            intervalMilliseconds: 700
         )
         for frame in frames { try validateWindowGeometry(frame) }
         let analyses = try frames.map { try analyzer.analyze($0.image) }
@@ -701,8 +730,25 @@ final class InspectorViewModel: ObservableObject {
             automationPendingMomentKeys = keys
             proposedMomentThumbnailTarget = target
             do {
-                _ = try await performClick(target.plannedAction, context: .momentsFeed, expecting: .viewerDetected)
+                _ = try await performClick(
+                    target.plannedAction,
+                    context: .momentsFeed,
+                    expecting: .viewerDetected,
+                    verificationDelaysMilliseconds: MomentMediaLoadingPolicy.verificationDelaysMilliseconds
+                )
             } catch {
+                if observationSnapshot?.screen.kind == .unknown {
+                    automationMomentKeys.formUnion(keys)
+                    automationPendingMomentKeys = []
+                    automationNoProgressCount += 1
+                    recordEvent(
+                        .postcondition,
+                        summary: "recovered · video/slideshow never exposed a recognizable photographic frame within the bounded wait"
+                    )
+                    try await dismissMomentViewer()
+                    automationPhase = .scanMoments
+                    return
+                }
                 guard observationSnapshot?.screen.kind == .momentDetails else { throw error }
                 automationMomentKeys.formUnion(keys)
                 automationPendingMomentKeys = []
@@ -867,6 +913,8 @@ final class InspectorViewModel: ObservableObject {
                 previousFingerprint: snapshot.fingerprint,
                 unchangedIsAllowed: true
             )
+        case .verifyPersonalInfo:
+            try await continuePersonalInfoVerification(previousFingerprint: snapshot.fingerprint)
         case .returnToTop, .openPFP:
             if automationPhase == .openPFP {
                 automationPhase = .returnToTop
@@ -915,7 +963,8 @@ final class InspectorViewModel: ObservableObject {
     private func performClick(
         _ action: PlannedAction,
         context: CalibrationContext,
-        expecting condition: VisiblePostcondition
+        expecting condition: VisiblePostcondition,
+        verificationDelaysMilliseconds: [Int] = [800, 650, 650]
     ) async throws -> ObservationSnapshot {
         guard let automationWindowFrame else { throw AutomationRuntimeError.mirroringWindowMissing }
         try await focusMirroringApp()
@@ -936,7 +985,10 @@ final class InspectorViewModel: ObservableObject {
         recordEvent(.safetyDecision, summary: "Executed \(action.kind.rawValue) · \(action.rationale)")
 
         var lastResult: PostconditionResult?
-        for delay in [800, 650, 650] {
+        for (index, delay) in verificationDelaysMilliseconds.enumerated() {
+            if action.kind == .openMomentThumbnail && index >= 2 {
+                automationStatus = "Waiting for video/slideshow frame · check \(index + 1)/\(verificationDelaysMilliseconds.count)"
+            }
             try await Task.sleep(for: .milliseconds(delay))
             let snapshot = try await captureAutomationFrame()
             let result = postconditionEvaluator.evaluate(condition, against: snapshot)
@@ -1130,6 +1182,7 @@ final class InspectorViewModel: ObservableObject {
         automationAboutMeSelected = false
         automationScrollAttempts = 0
         automationReturnToTopScrollsRemaining = 0
+        automationPersonalInfoVerificationAttempts = 0
         automationNoProgressCount = 0
         automationUnknownCount = 0
         automationMomentKeys = []
@@ -1838,6 +1891,7 @@ final class InspectorViewModel: ObservableObject {
 
         let automationCanTraverseUnknown = automationRunState == .running && [
             AutomationPhase.scanProfile,
+            .verifyPersonalInfo,
             .returnToTop,
             .scanMoments,
             .exitMoments,

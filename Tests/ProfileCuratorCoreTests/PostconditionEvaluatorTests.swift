@@ -2,6 +2,11 @@ import XCTest
 @testable import ProfileCuratorCore
 
 final class PostconditionEvaluatorTests: XCTestCase {
+    func testMomentMediaLoadingPolicyAllowsDelayedVideoAndSlideshowFrames() {
+        XCTAssertGreaterThanOrEqual(MomentMediaLoadingPolicy.totalWaitMilliseconds, 15_000)
+        XCTAssertGreaterThanOrEqual(MomentMediaLoadingPolicy.verificationDelaysMilliseconds.count, 8)
+    }
+
     func testAnchorAbsentRequiresPopupTextToDisappear() {
         let evaluator = NavigationPostconditionEvaluator()
         let visible = makeSnapshot(fingerprint: "same", username: "@a", text: "Total learning points")

@@ -1,5 +1,18 @@
 import Foundation
 
+public enum MomentMediaLoadingPolicy {
+    /// Videos and slideshow Moments can spend several seconds on a loader or
+    /// text-only intro before HelloTalk exposes recognizable viewer chrome or
+    /// a photographic frame. Poll without issuing another input action.
+    public static let verificationDelaysMilliseconds = [
+        800, 800, 900, 1_000, 1_200, 1_400, 1_600, 1_800, 2_200, 3_300
+    ]
+
+    public static var totalWaitMilliseconds: Int {
+        verificationDelaysMilliseconds.reduce(0, +)
+    }
+}
+
 public enum PostconditionStatus: String, Codable, Equatable, Sendable {
     case passed
     case failed
