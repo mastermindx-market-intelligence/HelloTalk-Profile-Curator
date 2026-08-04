@@ -133,6 +133,11 @@ public struct MomentThumbnailTargetDetector: Sendable {
                     width: Double(cellSize - inset * 2) / Double(pixels.width),
                     height: Double(cellSize - inset * 2) / Double(pixels.height)
                 )
+                guard !isAdvertisingPoint(
+                    safe.center,
+                    observations: observations,
+                    verticalTolerance: max(0.075, safe.height * 0.95)
+                ) else { continue }
                 targets.append(MomentThumbnailTarget(
                     index: row * columns + column,
                     point: safe.center,
@@ -197,8 +202,14 @@ public struct MomentThumbnailTargetDetector: Sendable {
         observations: [OCRObservation]
     ) -> ClosedRange<Int>? {
         let minimumRunHeight = Int(Double(cellSize) * 0.65)
-        let candidates = runs.filter {
-            $0.upperBound - $0.lowerBound + 1 >= minimumRunHeight
+        let advertisingCenters = advertisingObservations(in: observations).map(\.bounds.center.y)
+        let normalizedCellHeight = Double(cellSize) / Double(imageHeight)
+        let candidates = runs.filter { candidate in
+            let centerY = Double(candidate.lowerBound + cellSize / 2) / Double(imageHeight)
+            return candidate.upperBound - candidate.lowerBound + 1 >= minimumRunHeight
+                && !advertisingCenters.contains {
+                    abs($0 - centerY) <= normalizedCellHeight * 1.15
+                }
         }
         let pitch = cellSize + gutter
         let tolerance = max(gutter * 2, Int(Double(cellSize) * 0.08))
@@ -240,6 +251,28 @@ public struct MomentThumbnailTargetDetector: Sendable {
                 return lhs.lowerBound < rhs.lowerBound
             }
             return lhsScore < rhsScore
+        }
+    }
+
+    private func advertisingObservations(in observations: [OCRObservation]) -> [OCRObservation] {
+        let markers = [
+            "download now", "ad-free", "ad free", "sponsored", "advertisement",
+            "install", "promoted", "ad x"
+        ]
+        return observations.filter { observation in
+            guard observation.confidence >= 0.35 else { return false }
+            let text = observation.text.lowercased()
+            return markers.contains(where: text.contains)
+        }
+    }
+
+    private func isAdvertisingPoint(
+        _ point: NormalizedPoint,
+        observations: [OCRObservation],
+        verticalTolerance: Double
+    ) -> Bool {
+        advertisingObservations(in: observations).contains {
+            abs($0.bounds.center.y - point.y) <= verticalTolerance
         }
     }
 
@@ -326,11 +359,19 @@ public struct MomentThumbnailTargetDetector: Sendable {
             let expectedX = left + boundary * cellSize + (boundary - 1) * gutter
             let probeWidth = max(2, gutter / 2)
             return (-gutter...gutter).map { offset in
-                pixels.whiteFraction(
-                    x: expectedX + offset,
-                    y: y,
-                    width: probeWidth,
-                    height: 1
+                max(
+                    pixels.whiteFraction(
+                        x: expectedX + offset,
+                        y: y,
+                        width: probeWidth,
+                        height: 1
+                    ),
+                    pixels.darkFraction(
+                        x: expectedX + offset,
+                        y: y,
+                        width: probeWidth,
+                        height: 1
+                    )
                 )
             }.max() ?? 0
         }
@@ -403,6 +444,12 @@ private struct MomentPixelBuffer {
             Swift.min(red, Swift.min(green, blue)) > 238
                 && Swift.max(red, Swift.max(green, blue))
                     - Swift.min(red, Swift.min(green, blue)) < 18
+        }
+    }
+
+    func darkFraction(x: Int, y: Int, width: Int, height: Int) -> Double {
+        fraction(x: x, y: y, width: width, height: height, stride: 1) { red, green, blue in
+            Swift.max(red, Swift.max(green, blue)) < 42
         }
     }
 

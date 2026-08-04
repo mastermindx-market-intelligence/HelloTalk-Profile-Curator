@@ -48,7 +48,7 @@ public struct NavigationPostconditionEvaluator: Sendable {
                 failure: "OCR anchor is still visible: \(anchor)"
             )
         case .viewerDetected:
-            let kinds: Set<DetectedScreenKind> = [.pfpViewer, .momentViewer]
+            let kinds: Set<DetectedScreenKind> = [.pfpViewer, .momentViewer, .interstitialAd]
             return result(
                 condition,
                 passed: kinds.contains(snapshot.screen.kind),

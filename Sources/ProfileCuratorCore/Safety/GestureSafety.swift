@@ -146,6 +146,35 @@ public struct MomentViewerDismissPlanner: Sendable {
     }
 }
 
+public struct InterstitialAdDismissPlanner: Sendable {
+    public init() {}
+
+    public func closeAction(observations: [OCRObservation] = []) -> PlannedAction {
+        let text = observations.map(\.text).joined(separator: " ")
+        let isStoreLanding = text.localizedCaseInsensitiveContains("Age Rating")
+            || text.localizedCaseInsensitiveContains("In-App Purchases")
+            || text.localizedCaseInsensitiveContains("Category")
+        if isStoreLanding {
+            let region = NormalizedRect(x: 0.045, y: 0.11, width: 0.14, height: 0.10)
+            return PlannedAction(
+                kind: .closeViewer,
+                point: NormalizedPoint(x: 0.112, y: 0.16),
+                requiredSafeRegion: region,
+                rationale: "Dismiss the verified ad landing sheet using its top-left X"
+            )
+        }
+        // Measured from the supervised 420x932 iPhone Mirroring capture. Unlike
+        // Moment chrome, the interstitial close control is always at top-right.
+        let region = NormalizedRect(x: 0.83, y: 0.09, width: 0.13, height: 0.09)
+        return PlannedAction(
+            kind: .closeViewer,
+            point: NormalizedPoint(x: 0.887, y: 0.132),
+            requiredSafeRegion: region,
+            rationale: "Dismiss the verified full-screen ad using its top-right X"
+        )
+    }
+}
+
 public struct GalleryGesturePlanner: Sendable {
     public init() {}
 

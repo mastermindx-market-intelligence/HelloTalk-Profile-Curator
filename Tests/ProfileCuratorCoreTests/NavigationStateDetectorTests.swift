@@ -28,6 +28,39 @@ final class NavigationStateDetectorTests: XCTestCase {
         XCTAssertEqual(result.confidence, 0)
     }
 
+    func testFullScreenAIPromoIsAnInterstitialAd() {
+        let result = NavigationStateDetector().classify(fixture(["Chat", "Share with AI", "Start chatting..."]))
+
+        XCTAssertEqual(result.kind, .interstitialAd)
+        XCTAssertEqual(result.navigationState, .inspectMomentViewer)
+        XCTAssertGreaterThan(result.confidence, 0.95)
+    }
+
+    func testAdStoreLandingIsAnInterstitialAd() {
+        let result = NavigationStateDetector().classify(fixture([
+            "Soll - Live Chat, Fun Call", "Get", "In-App Purchases", "Age Rating", "Category"
+        ]))
+
+        XCTAssertEqual(result.kind, .interstitialAd)
+    }
+
+    func testMomentsFeedWithEmbeddedInstallAdRemainsMomentsFeed() {
+        let analysis = FixtureAnalysis(
+            imageWidth: 420,
+            imageHeight: 932,
+            text: [
+                OCRObservation(text: "Moments", confidence: 0.96, bounds: NormalizedRect(x: 0.34, y: 0.42, width: 0.22, height: 0.03)),
+                OCRObservation(text: "Like", confidence: 0.96, bounds: NormalizedRect(x: 0.65, y: 0.72, width: 0.10, height: 0.03)),
+                OCRObservation(text: "Comment", confidence: 0.96, bounds: NormalizedRect(x: 0.78, y: 0.72, width: 0.16, height: 0.03)),
+                OCRObservation(text: "Install", confidence: 0.96, bounds: NormalizedRect(x: 0.80, y: 0.24, width: 0.14, height: 0.03)),
+                OCRObservation(text: "Ad-Free Experience", confidence: 0.96, bounds: NormalizedRect(x: 0.58, y: 0.36, width: 0.34, height: 0.03))
+            ],
+            faces: []
+        )
+
+        XCTAssertEqual(NavigationStateDetector().classify(analysis).kind, .momentsFeed)
+    }
+
     func testLivePhotoBadgeInViewerHeaderIdentifiesMomentViewerWithHiddenChrome() {
         let analysis = FixtureAnalysis(
             imageWidth: 418,

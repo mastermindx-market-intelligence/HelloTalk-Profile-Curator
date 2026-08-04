@@ -192,6 +192,7 @@ private struct ProfileGridCard: View {
 private struct ProfileDetailView: View {
     @ObservedObject var model: ReviewDashboardViewModel
     @State private var enlargedImage: EnlargedImage?
+    @State private var showingProfileDeletion = false
 
     var body: some View {
         ScrollView {
@@ -394,7 +395,11 @@ private struct ProfileDetailView: View {
                             Button("Save notes") { model.saveNotes() }.frame(maxWidth: .infinity, alignment: .trailing)
                         }
                     }
-                    Button("Delete media, keep profile record", role: .destructive) { model.deleteSelectedMedia() }
+                    HStack {
+                        Button("Delete media, keep profile record", role: .destructive) { model.deleteSelectedMedia() }
+                        Spacer()
+                        Button("Delete profile…", role: .destructive) { showingProfileDeletion = true }
+                    }
                 }
                 .padding(16)
             } else {
@@ -404,6 +409,18 @@ private struct ProfileDetailView: View {
         }
         .sheet(item: $enlargedImage) { item in
             EnlargedImageView(item: item)
+        }
+        .confirmationDialog(
+            "Delete this profile permanently?",
+            isPresented: $showingProfileDeletion,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Profile and All Media", role: .destructive) {
+                model.deleteSelectedProfile()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the profile, its Qwen analysis, and every locally stored photo. This cannot be undone.")
         }
     }
 

@@ -69,6 +69,21 @@ final class MomentNavigationTests: XCTestCase {
         XCTAssertEqual(targets.map(\.index), [0, 1, 2, 3, 4, 5, 6, 7])
     }
 
+    func testDarkThemeGuttersStillRevealMomentGrid() throws {
+        let mark = CalibrationMark(
+            context: .momentsFeed,
+            kind: .safeMomentThumbnailGrid,
+            bounds: NormalizedRect(x: 0.057, y: 0.20, width: 0.78, height: 0.66),
+            confirmed: true
+        )
+        let image = try makeMomentGridImage(rows: 2, finalRowColumns: 3, darkGutters: true)
+
+        let targets = MomentThumbnailTargetDetector().targets(in: image, from: [mark])
+
+        XCTAssertEqual(targets.count, 6)
+        XCTAssertTrue(targets.allSatisfy { $0.point.y < 0.70 })
+    }
+
     func testVerticalTimelineUsesFaceInsideDatedPostInsteadOfAdOrSocialControls() throws {
         let mark = CalibrationMark(
             context: .momentsFeed,
@@ -189,6 +204,60 @@ final class MomentNavigationTests: XCTestCase {
         XCTAssertEqual(close.requiredSafeRegion, closeMark.bounds)
     }
 
+    func testInterstitialAdDismissUsesDedicatedTopRightCloseRegion() {
+        let action = InterstitialAdDismissPlanner().closeAction()
+
+        XCTAssertEqual(action.kind, .closeViewer)
+        XCTAssertGreaterThan(action.point.x, 0.85)
+        XCTAssertLessThan(action.point.y, 0.18)
+        XCTAssertTrue(action.requiredSafeRegion?.contains(action.point) == true)
+        XCTAssertTrue(ActionSafetyValidator().validate(
+            action,
+            exclusionZones: [],
+            emergencyStopActive: false,
+            liveInputEnabled: true
+        ).isAllowed)
+    }
+
+    func testInterstitialStoreLandingUsesDedicatedTopLeftCloseRegion() {
+        let action = InterstitialAdDismissPlanner().closeAction(observations: [
+            OCRObservation(
+                text: "Age Rating 18+ In-App Purchases",
+                confidence: 0.95,
+                bounds: NormalizedRect(x: 0.2, y: 0.3, width: 0.5, height: 0.05)
+            )
+        ])
+
+        XCTAssertEqual(action.kind, .closeViewer)
+        XCTAssertLessThan(action.point.x, 0.15)
+        XCTAssertLessThan(action.point.y, 0.20)
+        XCTAssertTrue(action.requiredSafeRegion?.contains(action.point) == true)
+    }
+
+    func testAdMarkerBandCannotBecomeMomentGridTarget() throws {
+        let mark = CalibrationMark(
+            context: .momentsFeed,
+            kind: .safeMomentThumbnailGrid,
+            bounds: NormalizedRect(x: 0.057, y: 0.20, width: 0.78, height: 0.66),
+            confirmed: true
+        )
+        let image = try makeMomentGridImage(rows: 3, finalRowColumns: 3)
+        let adMarker = OCRObservation(
+            text: "Download Now · Ad-Free Experience · AD X",
+            confidence: 0.98,
+            bounds: NormalizedRect(x: 0.62, y: 0.59, width: 0.31, height: 0.03)
+        )
+
+        let targets = MomentThumbnailTargetDetector().targets(
+            in: image,
+            from: [mark],
+            observations: [adMarker]
+        )
+
+        XCTAssertFalse(targets.isEmpty)
+        XCTAssertTrue(targets.allSatisfy { abs($0.point.y - adMarker.bounds.center.y) > 0.075 })
+    }
+
     func testGestureExecutorEmitsDragOnlyAfterEveryGatePasses() async throws {
         let driver = RecordingMomentDriver()
         let executor = SafeInputExecutor(driver: driver)
@@ -231,7 +300,8 @@ final class MomentNavigationTests: XCTestCase {
         rows: Int,
         finalRowColumns: Int,
         scale: Int = 1,
-        includeThreeColumnDistractor: Bool = false
+        includeThreeColumnDistractor: Bool = false,
+        darkGutters: Bool = false
     ) throws -> CGImage {
         let width = 420 * scale
         let height = 932 * scale
@@ -260,6 +330,15 @@ final class MomentNavigationTests: XCTestCase {
         let gutter = 5 * scale
         let left = 24 * scale
         let top = 360 * scale
+        if darkGutters {
+            context.setFillColor(CGColor(red: 0.03, green: 0.03, blue: 0.03, alpha: 1))
+            context.fill(CGRect(
+                x: left,
+                y: top,
+                width: cell * 3 + gutter * 2,
+                height: rows * cell + max(0, rows - 1) * gutter
+            ))
+        }
         if includeThreeColumnDistractor {
             context.setFillColor(CGColor(red: 0.45, green: 0.25, blue: 0.65, alpha: 1))
             for column in 0..<3 {

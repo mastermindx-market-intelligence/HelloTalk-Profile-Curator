@@ -256,7 +256,7 @@ final class InspectorViewModel: ObservableObject {
         case .connectFeed, .customSearch: .connectFeed
         case .pfpViewer: .pfpViewer
         case .momentsFeed, .momentDetails: .momentsFeed
-        case .momentViewer: .momentViewer
+        case .momentViewer, .interstitialAd: .momentViewer
         default: .profile
         }
     }
@@ -494,6 +494,19 @@ final class InspectorViewModel: ObservableObject {
             if let key = automationPendingMomentKey { automationMomentKeys.insert(key) }
             automationPendingMomentKey = nil
             try await dismissMomentViewer(snapshot)
+
+        case .interstitialAd:
+            guard automationPhase == .scanMoments else {
+                throw AutomationRuntimeError.unknownState("Advertising overlay appeared outside Moment collection")
+            }
+            automationStatus = "Recovering · dismissing full-screen ad"
+            _ = try await performClick(
+                InterstitialAdDismissPlanner().closeAction(observations: analysis?.text ?? []),
+                context: .momentViewer,
+                expecting: .contentHashChanged(previous: snapshot.fingerprint)
+            )
+            automationPendingMomentKey = nil
+            automationPhase = .scanMoments
 
         case .momentDetails:
             let back = fallbackBackAction(rationale: "Return from Moment details to the Moments feed")

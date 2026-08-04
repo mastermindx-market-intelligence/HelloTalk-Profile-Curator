@@ -213,6 +213,20 @@ final class ReviewDashboardViewModel: ObservableObject {
         } catch { errorMessage = error.localizedDescription }
     }
 
+    func deleteSelectedProfile() {
+        guard let id = selectedProfileID else { return }
+        let label = selected?.profile.displayName ?? selected?.profile.usernameNormalized ?? "profile"
+        do {
+            try repository?.deleteProfile(id: id)
+            selectedProfileID = nil
+            selectedMedia = []
+            selectedAnalysisRuns = []
+            notesDraft = ""
+            refresh(resetPage: true)
+            statusMessage = "Deleted \(label) and all locally stored media"
+        } catch { errorMessage = error.localizedDescription }
+    }
+
     func nextPage() { guard canGoForward else { return }; page += 1; refresh() }
     func previousPage() { guard canGoBack else { return }; page -= 1; refresh() }
 

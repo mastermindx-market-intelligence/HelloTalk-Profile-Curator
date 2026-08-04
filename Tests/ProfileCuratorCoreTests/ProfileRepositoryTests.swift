@@ -189,6 +189,38 @@ final class ProfileRepositoryTests: XCTestCase {
         XCTAssertEqual(media.first(where: { $0.id == second.id })?.retained, true)
     }
 
+    func testDeleteProfileRemovesRecordMediaRowsAndFiles() throws {
+        let context = try temporaryRepository()
+        let profile = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@delete-me",
+            age: 20,
+            gender: .female,
+            mbti: .infj
+        ))
+        let mediaURL = context.root.appendingPathComponent("delete-me.png")
+        try Data("photo".utf8).write(to: mediaURL)
+        XCTAssertTrue(try context.repository.insertMedia(MediaRecord(
+            id: UUID().uuidString,
+            profileID: profile.id,
+            kind: MediaKind.pfp.rawValue,
+            filePath: mediaURL.path,
+            perceptualHash: "delete-me-hash",
+            sourceSequence: 1,
+            faceCount: 1,
+            largestFaceRatio: 0.2,
+            faceCaptureQuality: 0.8,
+            usableFace: true,
+            retained: true,
+            createdAt: Date()
+        )))
+
+        try context.repository.deleteProfile(id: profile.id)
+
+        XCTAssertNil(try context.repository.profile(id: profile.id))
+        XCTAssertTrue(try context.repository.media(profileID: profile.id).isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: mediaURL.path))
+    }
+
     private func temporaryRepository() throws -> (repository: ProfileRepository, root: URL) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

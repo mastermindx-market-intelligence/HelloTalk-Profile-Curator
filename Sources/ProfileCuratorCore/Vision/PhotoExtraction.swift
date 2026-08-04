@@ -52,7 +52,8 @@ public struct MomentMediaCaptureValidator: Sendable {
             .joined(separator: " ")
         let advertisingMarkers = [
             "install", "ad-free", "ad free", "sponsored", "advertisement",
-            "promoted", "download app", "looking for a game"
+            "promoted", "download app", "looking for a game", "share with ai",
+            "start chatting"
         ]
         if advertisingMarkers.contains(where: visibleText.contains) {
             return "advertising or feed chrome detected"

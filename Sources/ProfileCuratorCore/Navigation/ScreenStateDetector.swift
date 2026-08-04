@@ -11,6 +11,7 @@ public enum DetectedScreenKind: String, Codable, CaseIterable, Hashable, Sendabl
     case momentsFeed
     case momentDetails
     case momentViewer
+    case interstitialAd
     case unknown
 }
 
@@ -53,6 +54,14 @@ public struct NavigationStateDetector: Sendable {
         if contains("Details", in: text)
             && (contains("Type a message", in: text) || contains("Comments", in: text)) {
             return classification(.momentDetails, .collectMoments, 0.93, ["Moment details header and comment composer"])
+        }
+        if containsAdvertisingInterstitial(in: text) {
+            return classification(
+                .interstitialAd,
+                .inspectMomentViewer,
+                0.97,
+                ["Full-screen advertising or promotional overlay"]
+            )
         }
         if (containsGalleryCounter(in: text) || contains("LIVE", in: text))
             && (contains("Like", in: text) || contains("Comment", in: text) || contains("Moments", in: text) || contains("AI", in: text)) {
@@ -106,6 +115,21 @@ public struct NavigationStateDetector: Sendable {
 
     private func containsGalleryCounter(in text: String) -> Bool {
         text.range(of: #"\b\d{1,2}\s*/\s*\d{1,2}\b"#, options: .regularExpression) != nil
+    }
+
+    private func containsAdvertisingInterstitial(in text: String) -> Bool {
+        let hasHelloTalkAIPromo = contains("Chat", in: text)
+            && contains("Share with", in: text)
+            && contains("chatting", in: text)
+        if hasHelloTalkAIPromo { return true }
+        let hasStoreLanding = contains("Age Rating", in: text)
+            && (contains("In-App Purchases", in: text) || contains("Category", in: text))
+        if hasStoreLanding { return true }
+        let markers = [
+            "Share with AI", "Start chatting", "Ad-Free", "Ad Free",
+            "Sponsored", "Advertisement", "Download App", "Install"
+        ]
+        return markers.contains { contains($0, in: text) }
     }
 
     private func containsLiveViewerBadge(in analysis: FixtureAnalysis) -> Bool {
