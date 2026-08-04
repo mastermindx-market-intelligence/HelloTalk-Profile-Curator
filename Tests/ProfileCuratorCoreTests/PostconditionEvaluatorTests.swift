@@ -27,6 +27,19 @@ final class PostconditionEvaluatorTests: XCTestCase {
         XCTAssertEqual(evaluator.evaluate(.customSearchDetected, against: moments).status, .failed)
     }
 
+    func testMomentDetailsImmediatelyStopsViewerPolling() {
+        let evaluator = NavigationPostconditionEvaluator()
+        let details = makeSnapshot(
+            fingerprint: "details",
+            text: "Details Comments Type a message",
+            kind: .momentDetails
+        )
+        let loading = makeSnapshot(fingerprint: "loading", text: "", kind: .unknown)
+
+        XCTAssertTrue(evaluator.shouldStopPolling(.viewerDetected, against: details))
+        XCTAssertFalse(evaluator.shouldStopPolling(.viewerDetected, against: loading))
+    }
+
     func testAnchorAbsentRequiresPopupTextToDisappear() {
         let evaluator = NavigationPostconditionEvaluator()
         let visible = makeSnapshot(fingerprint: "same", username: "@a", text: "Total learning points")

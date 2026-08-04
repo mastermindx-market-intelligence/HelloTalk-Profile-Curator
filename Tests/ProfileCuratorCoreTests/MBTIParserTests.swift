@@ -40,11 +40,11 @@ final class MBTIParserTests: XCTestCase {
 
     func testExplicitRuntimeThresholdAcceptsExactTinyTile() {
         let observations = [
-            OCRObservation(text: "ENFP", confidence: 0.60, bounds: bounds)
+            OCRObservation(text: "ENFP", confidence: 0.50, bounds: bounds)
         ]
 
         XCTAssertEqual(
-            MBTIParser().firstTarget(in: observations, minimumConfidence: 0.55)?.type,
+            MBTIParser().firstTarget(in: observations, minimumConfidence: 0.45)?.type,
             .enfp
         )
     }

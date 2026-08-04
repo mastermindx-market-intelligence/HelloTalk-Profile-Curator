@@ -116,6 +116,20 @@ public struct NavigationPostconditionEvaluator: Sendable {
         }
     }
 
+    public func shouldStopPolling(
+        _ condition: VisiblePostcondition,
+        against snapshot: ObservationSnapshot
+    ) -> Bool {
+        switch condition {
+        case .viewerDetected:
+            // Moment Details is a stable wrong destination, not a slow-loading
+            // video frame. Return control immediately so the caller can go back.
+            return snapshot.screen.kind == .momentDetails
+        default:
+            return false
+        }
+    }
+
     private func result(
         _ condition: VisiblePostcondition,
         passed: Bool,

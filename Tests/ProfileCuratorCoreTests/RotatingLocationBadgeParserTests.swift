@@ -72,6 +72,17 @@ final class RotatingLocationBadgeParserTests: XCTestCase {
         XCTAssertEqual(result.location?.score, 85)
     }
 
+    func testTinyLowConfidenceBadgeStillResolvesExactCityAndCountry() {
+        let frame = [
+            OCRObservation(text: "Guangzhou, China", confidence: 0.50, bounds: bounds)
+        ]
+
+        XCTAssertEqual(
+            RotatingLocationBadgeParser().resolve(frames: [frame]).location?.city,
+            "Guangzhou"
+        )
+    }
+
     func testCityCountryTextOutsideBadgeGeometryIsNotAccepted() {
         let profileBody = [
             OCRObservation(

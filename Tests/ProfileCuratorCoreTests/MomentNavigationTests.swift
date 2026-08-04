@@ -135,6 +135,31 @@ final class MomentNavigationTests: XCTestCase {
         XCTAssertEqual(targets.first?.plannedAction.kind, .openMomentThumbnail)
     }
 
+    func testDeclaredSinglePostPreventsFullWidthVideoFromBecomingThreeVisits() throws {
+        let mark = CalibrationMark(
+            context: .momentsFeed,
+            kind: .safeMomentThumbnailGrid,
+            bounds: NormalizedRect(x: 0.057, y: 0.20, width: 0.78, height: 0.66),
+            confirmed: true
+        )
+        let image = try makeMomentGridImage(rows: 1, finalRowColumns: 3)
+        let observations = [
+            OCRObservation(text: "@i_parker154", confidence: 0.98, bounds: NormalizedRect(x: 0.1, y: 0.18, width: 0.25, height: 0.03)),
+            OCRObservation(text: "About Me", confidence: 0.98, bounds: NormalizedRect(x: 0.1, y: 0.24, width: 0.2, height: 0.03)),
+            OCRObservation(text: "Moments 1", confidence: 0.98, bounds: NormalizedRect(x: 0.4, y: 0.24, width: 0.2, height: 0.03)),
+            OCRObservation(text: "Achievements", confidence: 0.98, bounds: NormalizedRect(x: 0.7, y: 0.24, width: 0.2, height: 0.03))
+        ]
+
+        let targets = MomentThumbnailTargetDetector().targets(
+            in: image,
+            from: [mark],
+            observations: observations
+        )
+
+        XCTAssertEqual(targets.count, 1)
+        XCTAssertEqual(targets.first?.index, 0)
+    }
+
     func testMomentGridRequiresDedicatedCalibrationRegion() {
         let image = try! makeMomentGridImage(rows: 2, finalRowColumns: 2)
         XCTAssertTrue(MomentThumbnailTargetDetector().targets(in: image, from: []).isEmpty)

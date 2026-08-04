@@ -64,6 +64,7 @@ public struct MomentThumbnailTargetDetector: Sendable {
               let pixels = MomentPixelBuffer(image: image) else {
             return []
         }
+        let declaredPostCount = declaredMomentPostCount(in: observations)
         // Some profiles expose Moments as a timeline rather than a square
         // gallery. The post header and caption occupy the upper part of the
         // calibrated region; treating that chrome as row one opens Details.
@@ -84,13 +85,17 @@ public struct MomentThumbnailTargetDetector: Sendable {
                     options: [.regularExpression, .caseInsensitive]
                 ) != nil && $0.bounds.center.y > 0.50
             }
-            if hasRelativePostTime, !timelineTargets.isEmpty { return timelineTargets }
+            if hasRelativePostTime, !timelineTargets.isEmpty {
+                return limited(timelineTargets, toDeclaredPostCount: declaredPostCount)
+            }
         }
         // Production captures must prove that the visible three-column geometry
         // belongs to the profile's top Moments gallery. Embedded photo mosaics in
         // timeline posts can have nearly identical pixel structure but open the
         // post container instead of a full-photo viewer.
-        guard observations.isEmpty || hasTopGalleryAnchors(observations) else { return timelineTargets }
+        guard observations.isEmpty || hasTopGalleryAnchors(observations) else {
+            return limited(timelineTargets, toDeclaredPostCount: declaredPostCount)
+        }
 
         let columns = 3
         let left = max(0, Int((searchMark.bounds.minX * Double(pixels.width)).rounded()))
@@ -124,7 +129,7 @@ public struct MomentThumbnailTargetDetector: Sendable {
             imageHeight: pixels.height,
             observations: observations
         ) else {
-            return timelineTargets
+            return limited(timelineTargets, toDeclaredPostCount: declaredPostCount)
         }
 
         let pitch = cellSize + gutter
@@ -185,7 +190,34 @@ public struct MomentThumbnailTargetDetector: Sendable {
                 ))
             }
         }
-        return targets.isEmpty ? timelineTargets : targets
+        return limited(
+            targets.isEmpty ? timelineTargets : targets,
+            toDeclaredPostCount: declaredPostCount
+        )
+    }
+
+    private func declaredMomentPostCount(in observations: [OCRObservation]) -> Int? {
+        let pattern = #"\bMoments\s*(\d{1,3})\b"#
+        for observation in observations {
+            let text = observation.text
+            guard let match = text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else {
+                continue
+            }
+            let token = text[match].filter(\.isNumber)
+            if let count = Int(token), count > 0 { return count }
+        }
+        return nil
+    }
+
+    private func limited(
+        _ targets: [MomentThumbnailTarget],
+        toDeclaredPostCount declaredPostCount: Int?
+    ) -> [MomentThumbnailTarget] {
+        guard let declaredPostCount else { return targets }
+        // The tab count is posts, not photos. A post can expose multiple photos
+        // after one tile opens, and the viewer traversal collects those frames.
+        // Never reinterpret one full-width video/post cover as three grid cells.
+        return Array(targets.prefix(declaredPostCount))
     }
 
     private func timelinePhotoTargets(

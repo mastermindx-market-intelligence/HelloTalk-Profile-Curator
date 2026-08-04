@@ -801,8 +801,8 @@ final class InspectorViewModel: ObservableObject {
         automationStatus = "Reading rotating location badge…"
         let frames = try await WindowCaptureService().captureBurst(
             windowID: selectedWindowID,
-            frameCount: 7,
-            intervalMilliseconds: 700
+            frameCount: 10,
+            intervalMilliseconds: 650
         )
         for frame in frames { try validateWindowGeometry(frame) }
         let analyses = try frames.map { try analyzer.analyze($0.image) }
@@ -1252,6 +1252,10 @@ final class InspectorViewModel: ObservableObject {
                 await liveInputExecutor.resolvePostcondition(passed: true)
                 recordEvent(.postcondition, summary: "passed · \(result.summary)")
                 return snapshot
+            }
+            if postconditionEvaluator.shouldStopPolling(condition, against: snapshot) {
+                await liveInputExecutor.resolvePostcondition(passed: false)
+                throw AutomationRuntimeError.postconditionFailed(result.summary)
             }
         }
         await liveInputExecutor.resolvePostcondition(passed: false)
@@ -2159,7 +2163,7 @@ final class InspectorViewModel: ObservableObject {
             // Personal Info tiles can be very small in the mirrored window.
             // Keep exact four-letter matching, but accept moderately lower
             // Vision confidence so a genuine ENFP/INFJ tile is not discarded.
-            mbti: mbtiParser.matches(in: result.text, minimumConfidence: 0.55).first?.type,
+            mbti: mbtiParser.matches(in: result.text, minimumConfidence: 0.45).first?.type,
             location: temporalLocation?.location,
             metadata: profileMetadata
         )

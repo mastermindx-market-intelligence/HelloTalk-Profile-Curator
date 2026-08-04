@@ -73,7 +73,7 @@ public struct RotatingLocationBadgeParser: Sendable {
 
     public init() {}
 
-    public func locationSamples(in observations: [OCRObservation], minimumConfidence: Float = 0.55) -> [LocationBadgeSample] {
+    public func locationSamples(in observations: [OCRObservation], minimumConfidence: Float = 0.45) -> [LocationBadgeSample] {
         observations.compactMap { observation in
             guard observation.confidence >= minimumConfidence else { return nil }
             let text = observation.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -106,7 +106,7 @@ public struct RotatingLocationBadgeParser: Sendable {
             && bounds.height <= 0.09
     }
 
-    public func nearbySamples(in observations: [OCRObservation], minimumConfidence: Float = 0.55) -> [NearbyCountSample] {
+    public func nearbySamples(in observations: [OCRObservation], minimumConfidence: Float = 0.45) -> [NearbyCountSample] {
         observations.compactMap { observation in
             guard observation.confidence >= minimumConfidence else { return nil }
             let text = observation.text.trimmingCharacters(in: .whitespacesAndNewlines)
