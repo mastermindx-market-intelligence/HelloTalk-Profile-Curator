@@ -63,6 +63,11 @@ final class ProfileInteractionSafetyTests: XCTestCase {
         XCTAssertEqual(safety.returnToTopScrollPasses(afterDownwardScrollAttempts: 99), 8)
     }
 
+    func testNewProfileHeaderRecoveryUsesFewFullScreenJumps() {
+        XCTAssertGreaterThanOrEqual(ProfileInteractionSafety.acquireProfileTopScrollLines, 30)
+        XCTAssertLessThanOrEqual(ProfileInteractionSafety.maximumAcquireProfileTopScrollAttempts, 3)
+    }
+
     private func observation(
         _ text: String,
         x: Double,

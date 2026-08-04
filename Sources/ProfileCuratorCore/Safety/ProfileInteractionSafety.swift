@@ -1,6 +1,9 @@
 import Foundation
 
 public struct ProfileInteractionSafety: Sendable {
+    public static let acquireProfileTopScrollLines = 36
+    public static let maximumAcquireProfileTopScrollAttempts = 3
+
     public init() {}
 
     /// A single large upward wheel event can leave HelloTalk between Personal

@@ -1284,16 +1284,19 @@ final class InspectorViewModel: ObservableObject {
     }
 
     private func continueAcquireProfileTop(previousFingerprint: String?) async throws {
-        guard automationScrollAttempts < 10 else {
-            throw AutomationRuntimeError.unknownState("The newly opened profile did not return to its header after 10 bounded upward passes")
+        let maximumAttempts = ProfileInteractionSafety.maximumAcquireProfileTopScrollAttempts
+        guard automationScrollAttempts < maximumAttempts else {
+            throw AutomationRuntimeError.unknownState(
+                "The newly opened profile did not expose its header after \(maximumAttempts) full-screen recovery jumps"
+            )
         }
         if automationReturnToTopScrollsRemaining <= 0 {
             automationReturnToTopScrollsRemaining = 2
         }
         automationScrollAttempts += 1
-        automationStatus = "Opening new profile header · upward pass \(automationScrollAttempts)/10"
+        automationStatus = "Opening new profile header · full-screen jump \(automationScrollAttempts)/\(maximumAttempts)"
         _ = try await performVerticalScroll(
-            lines: 12,
+            lines: ProfileInteractionSafety.acquireProfileTopScrollLines,
             context: .profile,
             previousFingerprint: previousFingerprint,
             unchangedIsAllowed: true
