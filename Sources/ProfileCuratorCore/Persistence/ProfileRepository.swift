@@ -438,6 +438,22 @@ public final class ProfileRepository: @unchecked Sendable {
         }
     }
 
+    public func setRetainedMedia(profileID: String, mediaIDs: Set<String>) throws {
+        try databaseQueue.write { database in
+            let records = try MediaRecord.fetchAll(
+                database,
+                sql: "SELECT * FROM media WHERE profile_id = ? AND kind IN (?, ?)",
+                arguments: [profileID, MediaKind.pfp.rawValue, MediaKind.moment.rawValue]
+            )
+            for record in records {
+                try database.execute(
+                    sql: "UPDATE media SET retained = ? WHERE id = ?",
+                    arguments: [mediaIDs.contains(record.id), record.id]
+                )
+            }
+        }
+    }
+
     public func saveAnalysisRun(_ record: AnalysisRunRecord) throws {
         try databaseQueue.write { try record.save($0) }
     }

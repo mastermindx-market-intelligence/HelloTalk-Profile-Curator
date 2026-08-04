@@ -259,6 +259,7 @@ enum ExportFormat: String { case csv, json }
 final class VLMSettingsViewModel: ObservableObject {
     @Published var endpoint = ""
     @Published var model = "qwen3.5:9b"
+    @Published var enforceNoFaceForPrimary = true
     @Published var status = "Not configured — collection remains fully offline"
     @Published var isTesting = false
 
@@ -269,6 +270,7 @@ final class VLMSettingsViewModel: ObservableObject {
         if let configuration = try? store?.load() {
             endpoint = configuration.baseURL?.absoluteString ?? ""
             model = configuration.model
+            enforceNoFaceForPrimary = configuration.enforceNoFaceForPrimary
             if configuration.baseURL != nil { status = "Saved locally; connection not tested" }
         }
     }
@@ -278,7 +280,8 @@ final class VLMSettingsViewModel: ObservableObject {
             let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
             let configuration = VLMConfiguration(
                 baseURL: trimmed.isEmpty ? nil : URL(string: trimmed),
-                model: model.trimmingCharacters(in: .whitespacesAndNewlines)
+                model: model.trimmingCharacters(in: .whitespacesAndNewlines),
+                enforceNoFaceForPrimary: enforceNoFaceForPrimary
             )
             try store?.save(configuration)
             status = configuration.baseURL == nil ? "Offline mode saved" : "Qwen settings saved locally"
@@ -287,6 +290,13 @@ final class VLMSettingsViewModel: ObservableObject {
             status = error.localizedDescription
             return nil
         }
+    }
+
+    func saveCollectionSettings() {
+        guard save() != nil else { return }
+        status = enforceNoFaceForPrimary
+            ? "Primary and Secondary no-face rejection saved"
+            : "Primary no-face rejection disabled · Secondary remains mandatory"
     }
 
     func testConnection() {

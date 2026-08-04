@@ -335,6 +335,13 @@ struct LocalDataSettingsView: View {
                 Text("Profiles, media, diagnostics, exports, configuration, and analysis queues remain under your local Application Support folder. Profile identity uses normalized usernames only; media identity uses perceptual hashes only. No face recognition or cross-account identity matching is implemented.")
                     .foregroundStyle(.secondary)
             }
+            Section("Collection policy") {
+                Toggle("Reject Primary profiles when no usable face is found", isOn: $vlmModel.enforceNoFaceForPrimary)
+                Text("Secondary profiles always enforce the no-face rule. This safety requirement cannot be disabled.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Save collection settings") { vlmModel.saveCollectionSettings() }
+            }
             Section("Optional Qwen over Tailscale") {
                 TextField("Ollama URL (for example http://windows-pc:11434)", text: $vlmModel.endpoint)
                 TextField("Model", text: $vlmModel.model)

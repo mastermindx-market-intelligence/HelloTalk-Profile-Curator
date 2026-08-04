@@ -545,6 +545,7 @@ final class InspectorViewModel: ObservableObject {
             }
             let candidates = photos.map {
                 MediaCandidate(
+                    id: UUID(uuidString: $0.id) ?? UUID(),
                     perceptualHash: $0.perceptualHash,
                     faceCount: $0.faceCount,
                     largestFaceRatio: $0.largestFaceRatio,
@@ -552,14 +553,19 @@ final class InspectorViewModel: ObservableObject {
                     contextStrength: $0.typedKind == .moment ? 0.5 : 0
                 )
             }
-            switch NoFacePolicy().decision(group: group, candidates: candidates, feedExhausted: true) {
+            let plan = MediaRetentionPlanner().plan(candidates: candidates)
+            let retainedIDs = Set(plan.retainedIDs.map(\.uuidString))
+            let configuration = try? VLMConfigurationStore.defaultStore().load()
+            let noFacePolicy = NoFacePolicy(enabledForPrimary: configuration?.enforceNoFaceForPrimary ?? true)
+            switch noFacePolicy.decision(group: group, candidates: candidates, feedExhausted: true) {
             case .rejectAndPurge:
                 try profileRepository.updateStatus(id: profile.id, status: .rejectedNoFace, reason: "no_usable_face_in_pfp_or_scanned_moments")
                 try profileRepository.purgeMedia(profileID: profile.id)
                 collectionStatus = "Rejected no-face · media purged; username tombstone retained"
             case .retainForReview:
+                try profileRepository.setRetainedMedia(profileID: profile.id, mediaIDs: retainedIDs)
                 try profileRepository.updateStatus(id: profile.id, status: .review)
-                collectionStatus = "Media finalized for local review"
+                collectionStatus = "Media finalized for local review · retained \(retainedIDs.count)/\(plan.scannedCount) balanced photos"
             case .continueScanning:
                 collectionStatus = "Continue scanning until a usable face, feed bottom, or 20 photos"
             }

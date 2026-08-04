@@ -52,6 +52,8 @@ Remaining supervised gate: validate calibrated PFP open/crop/close actions befor
 - [x] 20 scanned / 10 retained hard limits
 - [x] Perceptual-hash deduplication
 - [x] No-face tombstone finalization and media purge
+- [x] Configurable Primary no-face rule with mandatory Secondary enforcement
+- [x] Balanced final retention applies the 6-face / 4-context caps instead of first-seen order
 - [x] Crash/restart resume checkpoint
 
 ## Phase 5 — optional Qwen analysis

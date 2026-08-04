@@ -5,6 +5,13 @@ import XCTest
 final class VLMIntegrationTests: XCTestCase {
     func testFreshConfigurationUsesCurrentVisionDefault() {
         XCTAssertEqual(VLMConfiguration().model, "qwen3.5:9b")
+        XCTAssertTrue(VLMConfiguration().enforceNoFaceForPrimary)
+    }
+
+    func testLegacyConfigurationDefaultsPrimaryNoFaceRuleOn() throws {
+        let legacy = Data(#"{"baseURL":null,"model":"qwen3.5:9b","requestTimeoutSeconds":45,"maximumRetries":2}"#.utf8)
+        let decoded = try JSONDecoder().decode(VLMConfiguration.self, from: legacy)
+        XCTAssertTrue(decoded.enforceNoFaceForPrimary)
     }
 
     func testConfigurationRejectsUnsafeOrMalformedEndpoint() throws {

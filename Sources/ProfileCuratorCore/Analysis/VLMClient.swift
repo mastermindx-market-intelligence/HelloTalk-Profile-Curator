@@ -5,17 +5,31 @@ public struct VLMConfiguration: Codable, Hashable, Sendable {
     public var model: String
     public var requestTimeoutSeconds: Double
     public var maximumRetries: Int
+    public var enforceNoFaceForPrimary: Bool
 
     public init(
         baseURL: URL? = nil,
         model: String = "qwen3.5:9b",
         requestTimeoutSeconds: Double = 45,
-        maximumRetries: Int = 2
+        maximumRetries: Int = 2,
+        enforceNoFaceForPrimary: Bool = true
     ) {
         self.baseURL = baseURL
         self.model = model
         self.requestTimeoutSeconds = min(180, max(5, requestTimeoutSeconds))
         self.maximumRetries = min(5, max(0, maximumRetries))
+        self.enforceNoFaceForPrimary = enforceNoFaceForPrimary
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            baseURL: try container.decodeIfPresent(URL.self, forKey: .baseURL),
+            model: try container.decodeIfPresent(String.self, forKey: .model) ?? "qwen3.5:9b",
+            requestTimeoutSeconds: try container.decodeIfPresent(Double.self, forKey: .requestTimeoutSeconds) ?? 45,
+            maximumRetries: try container.decodeIfPresent(Int.self, forKey: .maximumRetries) ?? 2,
+            enforceNoFaceForPrimary: try container.decodeIfPresent(Bool.self, forKey: .enforceNoFaceForPrimary) ?? true
+        )
     }
 
     public func validatedBaseURL() throws -> URL {

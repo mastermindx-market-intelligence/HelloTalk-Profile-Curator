@@ -48,6 +48,38 @@ final class ProfileRepositoryTests: XCTestCase {
         XCTAssertTrue(page.records.allSatisfy { $0.typedGroup == .primary })
     }
 
+    func testBalancedFinalizationCanReplaceFirstTenRetentionFlags() throws {
+        let context = try temporaryRepository()
+        let profile = try context.repository.upsert(ProfileDraft(usernameRaw: "@retention", age: 19, gender: .female, mbti: .infj))
+        let first = MediaRecord(
+            id: UUID().uuidString,
+            profileID: profile.id,
+            kind: MediaKind.pfp.rawValue,
+            filePath: "/tmp/first.png",
+            perceptualHash: "first",
+            sourceSequence: 1,
+            faceCount: 1,
+            largestFaceRatio: 0.2,
+            faceCaptureQuality: 0.8,
+            usableFace: true,
+            retained: true,
+            createdAt: Date()
+        )
+        var second = first
+        second.id = UUID().uuidString
+        second.kind = MediaKind.moment.rawValue
+        second.filePath = "/tmp/second.png"
+        second.perceptualHash = "second"
+        second.sourceSequence = 2
+        XCTAssertTrue(try context.repository.insertMedia(first))
+        XCTAssertTrue(try context.repository.insertMedia(second))
+
+        try context.repository.setRetainedMedia(profileID: profile.id, mediaIDs: [second.id])
+        let media = try context.repository.media(profileID: profile.id)
+        XCTAssertEqual(media.first(where: { $0.id == first.id })?.retained, false)
+        XCTAssertEqual(media.first(where: { $0.id == second.id })?.retained, true)
+    }
+
     private func temporaryRepository() throws -> (repository: ProfileRepository, root: URL) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
