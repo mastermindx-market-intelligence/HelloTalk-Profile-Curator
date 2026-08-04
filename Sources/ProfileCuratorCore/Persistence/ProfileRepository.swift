@@ -70,6 +70,7 @@ public struct ProfileRecord: Codable, FetchableRecord, PersistableRecord, Identi
     public var typedStatus: ProfileStatus { ProfileStatus(rawValue: status) ?? .new }
     public var typedMBTI: MBTIType? { mbti.flatMap(MBTIType.init(rawValue:)) }
     public var typedGroup: MBTIGroup? { mbtiGroup.flatMap(MBTIGroup.init(rawValue:)) }
+    public var isPreferredLocationNoMBTI: Bool { mbti == nil && locationScore == 100 }
     public var hobbies: [String] {
         guard let data = hobbiesJSON.data(using: .utf8) else { return [] }
         return (try? JSONDecoder().decode([String].self, from: data)) ?? []
@@ -256,6 +257,7 @@ public struct ProfileQuery: Hashable, Sendable {
     public var maximumAge: Int?
     public var city: String?
     public var secondaryHighPriorityOnly: Bool
+    public var preferredLocationNoMBTIOnly: Bool
     public var minimumFaceScore: Double?
     public var minimumLifestyleScore: Double?
     public var minimumOverallScore: Double?
@@ -274,6 +276,7 @@ public struct ProfileQuery: Hashable, Sendable {
         maximumAge: Int? = nil,
         city: String? = nil,
         secondaryHighPriorityOnly: Bool = false,
+        preferredLocationNoMBTIOnly: Bool = false,
         minimumFaceScore: Double? = nil,
         minimumLifestyleScore: Double? = nil,
         minimumOverallScore: Double? = nil,
@@ -291,6 +294,7 @@ public struct ProfileQuery: Hashable, Sendable {
         self.maximumAge = maximumAge
         self.city = city
         self.secondaryHighPriorityOnly = secondaryHighPriorityOnly
+        self.preferredLocationNoMBTIOnly = preferredLocationNoMBTIOnly
         self.minimumFaceScore = minimumFaceScore
         self.minimumLifestyleScore = minimumLifestyleScore
         self.minimumOverallScore = minimumOverallScore
@@ -662,6 +666,9 @@ public final class ProfileRepository: @unchecked Sendable {
         }
         if query.secondaryHighPriorityOnly {
             clauses.append("mbti_group = 'secondary' AND (face_score >= 82 OR lifestyle_score >= 82 OR profile_signals_score >= 82 OR overall_score >= 76 OR location_score >= 100)")
+        }
+        if query.preferredLocationNoMBTIOnly {
+            clauses.append("mbti IS NULL AND location_score = 100")
         }
         if let value = query.minimumFaceScore { clauses.append("face_score >= ?"); arguments += [value] }
         if let value = query.minimumLifestyleScore { clauses.append("lifestyle_score >= ?"); arguments += [value] }

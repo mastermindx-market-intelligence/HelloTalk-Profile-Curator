@@ -20,6 +20,35 @@ final class CollectionPolicyTests: XCTestCase {
         ).isCollectible)
     }
 
+    func testTierOneLocationAllowsMissingButNotNonTargetMBTI() {
+        let policy = ProfileEligibilityPolicy()
+
+        XCTAssertEqual(
+            policy.evaluate(OpenedProfileEvidence(
+                username: "@tier1",
+                age: 20,
+                gender: .female,
+                mbti: nil,
+                locationScore: 100
+            )),
+            .collectPreferredLocationNoMBTI
+        )
+        XCTAssertFalse(policy.evaluate(OpenedProfileEvidence(
+            username: "@tier2",
+            age: 20,
+            gender: .female,
+            mbti: nil,
+            locationScore: 85
+        )).isCollectible)
+        XCTAssertFalse(policy.evaluate(OpenedProfileEvidence(
+            username: "@non-target",
+            age: 20,
+            gender: .female,
+            mbti: .isfj,
+            locationScore: 100
+        )).isCollectible)
+    }
+
     func testRetentionCapsAndDeduplicatesBeforeCountingRetained() {
         let duplicate = MediaCandidate(perceptualHash: "same", faceCount: 1, largestFaceRatio: 0.2, captureQuality: 0.8)
         var candidates = [duplicate, duplicate]
@@ -64,5 +93,19 @@ final class CollectionPolicyTests: XCTestCase {
             components: ScoreComponents(face: 10, lifestyle: 10, location: 100, completeness: 0, confidence: 0.5)
         )
         XCTAssertTrue(locationOnly.secondaryHighPriority)
+    }
+
+    func testNoMBTIExceptionRemainsFaceAndLifestyleLedWithExplicitPenalty() {
+        let scorer = ScoringEngine()
+        let strong = scorer.scorePreferredLocationNoMBTI(
+            components: ScoreComponents(face: 90, lifestyle: 90, location: 100, completeness: 75, confidence: 0.8)
+        )
+        let weak = scorer.scorePreferredLocationNoMBTI(
+            components: ScoreComponents(face: 40, lifestyle: 35, location: 100, completeness: 75, confidence: 0.8)
+        )
+
+        XCTAssertEqual(strong.overall, 83, accuracy: 0.001)
+        XCTAssertEqual(weak.overall, 36.25, accuracy: 0.001)
+        XCTAssertGreaterThan(strong.overall, weak.overall + 40)
     }
 }

@@ -40,6 +40,13 @@ public struct NavigationPostconditionEvaluator: Sendable {
                 success: "OCR anchor visible: \(anchor)",
                 failure: "OCR anchor missing: \(anchor)"
             )
+        case .ocrAnchorAbsent(let anchor):
+            return result(
+                condition,
+                passed: !snapshot.combinedOCRText.localizedCaseInsensitiveContains(anchor),
+                success: "OCR anchor dismissed: \(anchor)",
+                failure: "OCR anchor is still visible: \(anchor)"
+            )
         case .viewerDetected:
             let kinds: Set<DetectedScreenKind> = [.pfpViewer, .momentViewer]
             return result(

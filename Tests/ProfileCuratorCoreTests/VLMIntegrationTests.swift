@@ -161,6 +161,53 @@ final class VLMIntegrationTests: XCTestCase {
         XCTAssertTrue(prompts[1].contains("must be image-2"))
     }
 
+    func testPreferredLocationNoMBTIReceivesDeratedOverallAfterAnalysis() async throws {
+        let context = try temporaryRepository()
+        let profile = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@tier1-no-mbti",
+            age: 20,
+            gender: .female,
+            location: NormalizedLocation(
+                rawText: "Shenzhen",
+                city: "Shenzhen",
+                province: "Guangdong",
+                country: "China",
+                tier: 1,
+                score: 100,
+                confidence: 0.95
+            )
+        ))
+        try context.repository.updateScores(
+            id: profile.id,
+            face: 88,
+            lifestyle: nil,
+            overall: nil,
+            confidence: 0.8
+        )
+        let image = context.root.appendingPathComponent("context.png")
+        try Data("image".utf8).write(to: image)
+        _ = try context.repository.enqueueAnalysis(
+            profileID: profile.id,
+            type: .lifestyle,
+            modelName: "qwen3.5:9b",
+            promptVersion: VLMPromptLibrary.lifestyleVersion,
+            mediaPaths: [image.path]
+        )
+        let response = Data(#"{"lifestyle_affluence_signal":70,"confidence":80,"evidence":[],"actual_wealth":"unknown"}"#.utf8)
+        let processor = AnalysisQueueProcessor(
+            repository: context.repository,
+            client: MockVLMClient(result: .success(response)),
+            configuration: VLMConfiguration()
+        )
+
+        let processed = await processor.processNext()
+        XCTAssertTrue(processed)
+        let updated = try XCTUnwrap(context.repository.profile(id: profile.id))
+        XCTAssertTrue(updated.isPreferredLocationNoMBTI)
+        XCTAssertEqual(try XCTUnwrap(updated.lifestyleScore), 70, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(updated.overallScore), 74.9, accuracy: 0.001)
+    }
+
     private func temporaryRepository() throws -> (repository: ProfileRepository, root: URL) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

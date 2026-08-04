@@ -7,6 +7,7 @@ enum DashboardSection: String, CaseIterable, Identifiable {
     case primary = "Primary"
     case secondary = "Secondary"
     case highPrioritySecondary = "High-priority Secondary"
+    case preferredLocationNoMBTI = "Tier 1 · No MBTI"
     case shortlist = "Shortlist"
     case contacted = "Contacted"
     case rejected = "Rejected"
@@ -266,10 +267,12 @@ final class ReviewDashboardViewModel: ObservableObject {
         var groups = Set<MBTIGroup>()
         var statuses = Set<ProfileStatus>()
         var highPriority = false
+        var preferredLocationNoMBTI = false
         switch section {
         case .primary: groups = [.primary]
         case .secondary: groups = [.secondary]
         case .highPrioritySecondary: highPriority = true
+        case .preferredLocationNoMBTI: preferredLocationNoMBTI = true
         case .shortlist: statuses = [.shortlisted]
         case .contacted: statuses = [.contacted]
         case .rejected: statuses = [.rejected, .rejectedNoFace]
@@ -283,6 +286,7 @@ final class ReviewDashboardViewModel: ObservableObject {
             maximumAge: Int(maximumAgeText),
             city: city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : city.trimmingCharacters(in: .whitespacesAndNewlines),
             secondaryHighPriorityOnly: highPriority,
+            preferredLocationNoMBTIOnly: preferredLocationNoMBTI,
             minimumFaceScore: Double(minimumFaceScoreText),
             minimumLifestyleScore: Double(minimumLifestyleScoreText),
             minimumOverallScore: Double(minimumOverallScoreText),
@@ -313,7 +317,7 @@ final class ReviewDashboardViewModel: ObservableObject {
             profile.displayName ?? "",
             age,
             profile.mbti ?? "",
-            profile.mbtiGroup ?? "",
+            profile.mbtiGroup ?? (profile.isPreferredLocationNoMBTI ? "preferred_location_no_mbti" : ""),
             profile.cityNormalized ?? "",
             profile.countryNormalized ?? "",
             profile.bio ?? "",

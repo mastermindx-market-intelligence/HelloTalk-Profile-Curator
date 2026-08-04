@@ -87,6 +87,36 @@ final class ProfileRepositoryTests: XCTestCase {
         XCTAssertEqual(try context.repository.page(ProfileQuery(secondaryHighPriorityOnly: true)).totalCount, 1)
     }
 
+    func testPreferredLocationNoMBTIFilterDoesNotIncludeTargetMBTIProfiles() throws {
+        let context = try temporaryRepository()
+        let shenzhen = NormalizedLocation(
+            rawText: "Shenzhen",
+            city: "Shenzhen",
+            province: "Guangdong",
+            country: "China",
+            tier: 1,
+            score: 100,
+            confidence: 0.95
+        )
+        _ = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@exception",
+            age: 20,
+            gender: .female,
+            location: shenzhen
+        ))
+        _ = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@target",
+            age: 20,
+            gender: .female,
+            mbti: .infj,
+            location: shenzhen
+        ))
+
+        let page = try context.repository.page(ProfileQuery(preferredLocationNoMBTIOnly: true))
+
+        XCTAssertEqual(page.records.map(\.usernameNormalized), ["@exception"])
+    }
+
     func testBalancedFinalizationCanReplaceFirstTenRetentionFlags() throws {
         let context = try temporaryRepository()
         let profile = try context.repository.upsert(ProfileDraft(usernameRaw: "@retention", age: 19, gender: .female, mbti: .infj))

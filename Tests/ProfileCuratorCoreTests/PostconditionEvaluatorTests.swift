@@ -2,6 +2,20 @@ import XCTest
 @testable import ProfileCuratorCore
 
 final class PostconditionEvaluatorTests: XCTestCase {
+    func testAnchorAbsentRequiresPopupTextToDisappear() {
+        let evaluator = NavigationPostconditionEvaluator()
+        let visible = makeSnapshot(fingerprint: "same", username: "@a", text: "Total learning points")
+        let dismissed = makeSnapshot(fingerprint: "same", username: "@a", text: "About Me")
+
+        XCTAssertEqual(
+            evaluator.evaluate(.ocrAnchorAbsent("Total learning points"), against: visible).status,
+            .failed
+        )
+        XCTAssertEqual(
+            evaluator.evaluate(.ocrAnchorAbsent("Total learning points"), against: dismissed).status,
+            .passed
+        )
+    }
     func testContentChangePostconditionPassesOnlyForDifferentFingerprint() {
         let snapshot = makeSnapshot(fingerprint: "new")
         let evaluator = NavigationPostconditionEvaluator()
@@ -34,7 +48,11 @@ final class PostconditionEvaluatorTests: XCTestCase {
         XCTAssertEqual(result.status, .passed)
     }
 
-    private func makeSnapshot(fingerprint: String, username: String? = nil) -> ObservationSnapshot {
+    private func makeSnapshot(
+        fingerprint: String,
+        username: String? = nil,
+        text: String = "About Me"
+    ) -> ObservationSnapshot {
         ObservationSnapshot(
             fingerprint: fingerprint,
             screen: ScreenClassification(
@@ -43,7 +61,7 @@ final class PostconditionEvaluatorTests: XCTestCase {
                 confidence: 0.9,
                 evidence: []
             ),
-            combinedOCRText: "About Me",
+            combinedOCRText: text,
             username: username
         )
     }

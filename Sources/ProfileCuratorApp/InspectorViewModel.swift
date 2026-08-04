@@ -107,6 +107,8 @@ final class InspectorViewModel: ObservableObject {
     private let momentThumbnailDetector = MomentThumbnailTargetDetector()
     private let momentDismissPlanner = MomentViewerDismissPlanner()
     private let socialControlDetector = SocialControlExclusionDetector()
+    private let profileInteractionSafety = ProfileInteractionSafety()
+    private let recommendationTargetRanker = VisibleRecommendationTargetRanker()
     private let liveInputExecutor = SafeInputExecutor(driver: CGEventInputDriver())
     private let eventStore: NavigationEventLogStore?
     private var currentCGImage: CGImage?
@@ -182,6 +184,7 @@ final class InspectorViewModel: ObservableObject {
     var dynamicSocialExclusions: [ExclusionZone] {
         guard let analysis else { return [] }
         return socialControlDetector.exclusions(in: analysis.text)
+            + profileInteractionSafety.learningStatsExclusions(in: analysis.text)
     }
 
     var momentThumbnailTargets: [MomentThumbnailTarget] {
@@ -416,6 +419,16 @@ final class InspectorViewModel: ObservableObject {
         }
 
         automationStatus = "\(automationPhase.rawValue) · \(snapshot.screen.kind.rawValue) · \(automationProfileCount) saved"
+        if let observations = analysis?.text,
+           profileInteractionSafety.isLearningStatsPopup(observations) {
+            automationStatus = "Recovering · dismissing accidental learning-statistics popup"
+            _ = try await performClick(
+                profileInteractionSafety.dismissLearningStatsPopupAction(),
+                context: .profile,
+                expecting: .ocrAnchorAbsent("Total learning points")
+            )
+            return
+        }
         if snapshot.screen.kind == .unknown {
             try await recoverFromUnknownScreen(snapshot)
             return
@@ -507,12 +520,10 @@ final class InspectorViewModel: ObservableObject {
             _ = try await performClick(avatar, context: .profile, expecting: .viewerDetected)
 
         case .openMoments:
-            let moments = try calibratedAction(
-                context: .profile,
-                kind: .safeMoments,
-                actionKind: .selectMoments,
-                rationale: "Open the verified profile's Moments tab"
-            )
+            guard let observations = analysis?.text,
+                  let moments = profileInteractionSafety.tabAction(named: "Moments", in: observations) else {
+                throw AutomationRuntimeError.unknownState("The live Moments tab OCR anchor is unavailable; refusing a blind calibrated click")
+            }
             _ = try await performClick(moments, context: .profile, expecting: .contentHashChanged(previous: snapshot.fingerprint))
             automationPhase = .scanMoments
 
@@ -524,21 +535,19 @@ final class InspectorViewModel: ObservableObject {
         default:
             automationPhase = .scanProfile
             if !automationAboutMeSelected {
-                let about = try calibratedAction(
-                    context: .profile,
-                    kind: .safeAboutMe,
-                    actionKind: .selectAboutMe,
-                    rationale: "Select About Me before reading Personal Info"
-                )
-                _ = try await performClick(about, context: .profile, expecting: .selectedTab("About Me"))
-                automationAboutMeSelected = true
-            } else {
-                automationScrollAttempts += 1
-                guard automationScrollAttempts <= 10 else {
-                    throw AutomationRuntimeError.unknownState("Personal Info was not found after 10 bounded scrolls")
+                guard let observations = analysis?.text,
+                      profileInteractionSafety.tabAction(named: "About Me", in: observations) != nil else {
+                    throw AutomationRuntimeError.unknownState("The live About Me tab OCR anchor is unavailable; refusing to scan an unverified tab")
                 }
-                _ = try await performVerticalScroll(lines: -7, context: .profile, previousFingerprint: snapshot.fingerprint)
+                // A newly opened profile already lands on About Me. Verify the live
+                // OCR anchor and scroll; do not tap the tab or any nearby stats card.
+                automationAboutMeSelected = true
             }
+            automationScrollAttempts += 1
+            guard automationScrollAttempts <= 10 else {
+                throw AutomationRuntimeError.unknownState("Personal Info was not found after 10 bounded scrolls")
+            }
+            _ = try await performVerticalScroll(lines: -7, context: .profile, previousFingerprint: snapshot.fingerprint)
         }
     }
 
@@ -558,7 +567,7 @@ final class InspectorViewModel: ObservableObject {
 
         default:
             switch profileEligibilityDecision {
-            case .collectPrimary, .collectSecondary:
+            case .collectPrimary, .collectSecondary, .collectPreferredLocationNoMBTI:
                 checkpointVerifiedProfile()
                 guard collectedProfileID != nil, let username = profileAccumulator.username else {
                     throw AutomationRuntimeError.unknownState(collectionStatus)
@@ -628,7 +637,7 @@ final class InspectorViewModel: ObservableObject {
                 ?? currentCollectedProfile()?.usernameNormalized else {
             throw AutomationRuntimeError.unknownState("The current username is unavailable for identity verification")
         }
-        let proposals = visibleRecommendationTargets.compactMap { target -> (VisibleRecommendationTarget, VisibleRecommendationCandidate, RecommendationTraversalDecision)? in
+        let proposals = recommendationTargetRanker.ranked(visibleRecommendationTargets).compactMap { target -> (VisibleRecommendationTarget, VisibleRecommendationCandidate, RecommendationTraversalDecision)? in
             let candidate = VisibleRecommendationCandidate(
                 profileKey: target.profileKey,
                 displayedAge: target.displayedAge,
@@ -637,8 +646,7 @@ final class InspectorViewModel: ObservableObject {
             let decision = recommendationLedger.decision(for: candidate)
             return decision.isOpenProposal ? (target, candidate, decision) : nil
         }
-        guard let proposal = proposals.first(where: { $0.0.displayedAge.map { (18...21).contains($0) } == true })
-                ?? proposals.first else {
+        guard let proposal = proposals.first else {
             if automationScrollAttempts < 3 {
                 automationScrollAttempts += 1
                 _ = try await performVerticalScroll(
@@ -783,19 +791,16 @@ final class InspectorViewModel: ObservableObject {
     ) async throws -> Bool {
         guard let automationWindowFrame else { throw AutomationRuntimeError.mirroringWindowMissing }
         try await focusMirroringApp()
-        let safeRegion = NormalizedRect(x: 0.28, y: 0.30, width: 0.44, height: 0.40)
-        let action = PlannedAction(
-            kind: .verticalScroll,
-            point: safeRegion.center,
-            requiredSafeRegion: safeRegion,
-            rationale: lines < 0 ? "Discrete vertical scroll down" : "Discrete vertical scroll up"
-        )
+        let dynamicExclusions = exclusionZones(for: context) + dynamicSocialExclusions
+        guard let action = profileInteractionSafety.scrollAction(lines: lines, avoiding: dynamicExclusions) else {
+            throw AutomationRuntimeError.actionBlocked("No non-interactive profile scroll point is available")
+        }
         sessionState.recordProposal(policy: sessionPolicy)
         let decision = try await liveInputExecutor.executeVerticalScroll(
             action: action,
             lines: lines,
             windowFrame: automationWindowFrame,
-            exclusions: exclusionZones(for: context) + dynamicSocialExclusions,
+            exclusions: dynamicExclusions,
             emergencyStopActive: sessionState.pauseReason == .emergencyStop,
             sessionPauseReason: sessionState.pauseReason?.summary,
             liveInputEnabled: true
@@ -1328,9 +1333,13 @@ final class InspectorViewModel: ObservableObject {
 
     func finalizeCurrentProfileMedia() {
         guard let profile = currentCollectedProfile(),
-              let group = profile.typedGroup,
               let profileRepository else {
             collectionStatus = "Checkpoint an eligible profile before finalizing media"
+            return
+        }
+        guard let retentionGroup = profile.typedGroup
+                ?? (profile.isPreferredLocationNoMBTI ? MBTIGroup.secondary : nil) else {
+            collectionStatus = "Profile is neither target MBTI nor a preferred-location exception"
             return
         }
         do {
@@ -1351,7 +1360,7 @@ final class InspectorViewModel: ObservableObject {
             let retainedIDs = Set(plan.retainedIDs.map(\.uuidString))
             let configuration = try? VLMConfigurationStore.defaultStore().load()
             let noFacePolicy = NoFacePolicy(enabledForPrimary: configuration?.enforceNoFaceForPrimary ?? true)
-            switch noFacePolicy.decision(group: group, candidates: candidates, feedExhausted: true) {
+            switch noFacePolicy.decision(group: retentionGroup, candidates: candidates, feedExhausted: true) {
             case .rejectAndPurge:
                 try profileRepository.updateStatus(id: profile.id, status: .rejectedNoFace, reason: "no_usable_face_in_pfp_or_scanned_moments")
                 try profileRepository.purgeMedia(profileID: profile.id)
@@ -1563,7 +1572,7 @@ final class InspectorViewModel: ObservableObject {
             gender: profileHeaderParser.bestAge(in: result.text).map {
                 genderBadgeClassifier.classify(image: cgImage, ageMatch: $0).hint
             },
-            mbti: mbtiParser.firstTarget(in: result.text)?.type,
+            mbti: mbtiParser.matches(in: result.text).first?.type,
             location: locationNormalizer.normalize(result.text.map(\.text).joined(separator: " · ")),
             metadata: profileMetadata
         )
@@ -1722,7 +1731,13 @@ private struct ProfileObservationAccumulator {
     var occupation: String?
 
     var evidence: OpenedProfileEvidence {
-        OpenedProfileEvidence(username: username, age: age, gender: gender, mbti: mbti)
+        OpenedProfileEvidence(
+            username: username,
+            age: age,
+            gender: gender,
+            mbti: mbti,
+            locationScore: location?.score
+        )
     }
 
     var completenessScore: Double {

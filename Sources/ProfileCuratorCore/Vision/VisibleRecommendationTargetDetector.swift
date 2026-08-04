@@ -44,6 +44,12 @@ public struct VisibleRecommendationTarget: Identifiable, Hashable, Sendable {
 public struct VisibleRecommendationTargetDetector: Sendable {
     private let ageParser = RecommendationAgeParser()
 
+    private struct AgeAssociation {
+        let nameIndex: Int
+        let ageIndex: Int
+        let distance: Double
+    }
+
     public init() {}
 
     public func targets(in observations: [OCRObservation]) -> [VisibleRecommendationTarget] {
@@ -62,33 +68,32 @@ public struct VisibleRecommendationTargetDetector: Sendable {
             alignedWith: ages
         )
 
-        var associatedAgeIndexes = Set<Int>()
-        var targets: [VisibleRecommendationTarget] = names.compactMap { name in
-            let nearestAge = ages.enumerated()
-                .filter {
-                    abs($0.element.bounds.center.y - name.bounds.center.y) <= 0.055
-                        && abs($0.element.bounds.center.x - name.bounds.center.x) <= 0.18
-                }
-                .min {
-                    abs($0.element.bounds.center.x - name.bounds.center.x)
-                        < abs($1.element.bounds.center.x - name.bounds.center.x)
-                }
-            if let nearestAge { associatedAgeIndexes.insert(nearestAge.offset) }
-
-            let point = NormalizedPoint(
-                x: name.bounds.center.x,
-                y: name.bounds.minY - min(0.075, max(0.05, name.bounds.height * 1.7))
-            )
+        let associations = oneToOneAgeAssociations(names: names, ages: ages)
+        let associatedAgeIndexes = Set(associations.values)
+        var targets: [VisibleRecommendationTarget] = names.enumerated().compactMap { nameIndex, name in
+            let ageIndex = associations[nameIndex]
+            let age = ageIndex.map { ages[$0] }
+            let point: NormalizedPoint
+            if let age {
+                let xOffset = min(0.075, max(0.045, age.bounds.width * 1.3))
+                let yOffset = min(0.075, max(0.045, age.bounds.height * 1.5))
+                point = NormalizedPoint(x: age.bounds.center.x - xOffset, y: age.bounds.minY - yOffset)
+            } else {
+                point = NormalizedPoint(
+                    x: name.bounds.center.x,
+                    y: name.bounds.minY - min(0.075, max(0.05, name.bounds.height * 1.7))
+                )
+            }
             guard isSafePhotoPoint(point, galleryAnchor: galleryAnchor) else { return nil }
 
             return VisibleRecommendationTarget(
                 profileKey: normalizedProfileKey(name.text),
                 displayName: name.text.trimmingCharacters(in: .whitespacesAndNewlines),
-                displayedAge: nearestAge?.element.age,
-                ageEvidence: nearestAge?.element,
+                displayedAge: age?.age,
+                ageEvidence: age,
                 photoPoint: point,
                 safePhotoRegion: centeredRegion(around: point, width: 0.13, height: 0.11),
-                confidence: min(name.confidence, nearestAge?.element.confidence ?? galleryAnchor.confidence)
+                confidence: min(name.confidence, age?.confidence ?? galleryAnchor.confidence)
             )
         }
 
@@ -115,6 +120,30 @@ public struct VisibleRecommendationTargetDetector: Sendable {
             if $0.photoPoint.x != $1.photoPoint.x { return $0.photoPoint.x < $1.photoPoint.x }
             return $0.photoPoint.y < $1.photoPoint.y
         }
+    }
+
+    private func oneToOneAgeAssociations(
+        names: [OCRObservation],
+        ages: [RecommendationAgeCandidate]
+    ) -> [Int: Int] {
+        let candidates = names.enumerated().flatMap { nameIndex, name in
+            ages.enumerated().compactMap { ageIndex, age -> AgeAssociation? in
+                let dx = abs(age.bounds.center.x - name.bounds.center.x)
+                let dy = abs(age.bounds.center.y - name.bounds.center.y)
+                guard dx <= 0.14, dy <= 0.055 else { return nil }
+                return AgeAssociation(nameIndex: nameIndex, ageIndex: ageIndex, distance: dx + dy)
+            }
+        }.sorted { $0.distance < $1.distance }
+
+        var usedNames = Set<Int>()
+        var usedAges = Set<Int>()
+        var result: [Int: Int] = [:]
+        for candidate in candidates where !usedNames.contains(candidate.nameIndex) && !usedAges.contains(candidate.ageIndex) {
+            result[candidate.nameIndex] = candidate.ageIndex
+            usedNames.insert(candidate.nameIndex)
+            usedAges.insert(candidate.ageIndex)
+        }
+        return result
     }
 
     private func candidateNames(
@@ -166,6 +195,26 @@ public struct VisibleRecommendationTargetDetector: Sendable {
         let x = min(max(0, point.x - width / 2), 1 - width)
         let y = min(max(0, point.y - height / 2), 1 - height)
         return NormalizedRect(x: x, y: y, width: width, height: height)
+    }
+}
+
+public struct VisibleRecommendationTargetRanker: Sendable {
+    public init() {}
+
+    public func ranked(_ targets: [VisibleRecommendationTarget]) -> [VisibleRecommendationTarget] {
+        targets.sorted { lhs, rhs in
+            let lhsEligible = lhs.displayedAge.map { (18...21).contains($0) } == true
+            let rhsEligible = rhs.displayedAge.map { (18...21).contains($0) } == true
+            if lhsEligible != rhsEligible { return lhsEligible }
+            if lhsEligible, lhs.displayedAge != rhs.displayedAge {
+                return (lhs.displayedAge ?? Int.max) < (rhs.displayedAge ?? Int.max)
+            }
+            let lhsKnown = lhs.displayedAge != nil
+            let rhsKnown = rhs.displayedAge != nil
+            if lhsKnown != rhsKnown { return !lhsKnown }
+            if lhs.confidence != rhs.confidence { return lhs.confidence > rhs.confidence }
+            return lhs.photoPoint.x < rhs.photoPoint.x
+        }
     }
 }
 

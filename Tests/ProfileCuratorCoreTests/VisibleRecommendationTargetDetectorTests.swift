@@ -62,6 +62,52 @@ final class VisibleRecommendationTargetDetectorTests: XCTestCase {
         XCTAssertTrue(sayHi.bounds.contains(NormalizedPoint(x: 0.14, y: 0.79)))
     }
 
+    func testOneAgeBadgeCannotBeReusedByTwoAdjacentNames() {
+        let observations = [
+            observation("Suggested for You", x: 0.06, y: 0.50, width: 0.42, height: 0.04),
+            observation("Left", x: 0.08, y: 0.70, width: 0.10, height: 0.03),
+            observation("Right", x: 0.23, y: 0.70, width: 0.10, height: 0.03),
+            observation("921", x: 0.31, y: 0.70, width: 0.05, height: 0.03)
+        ]
+
+        let targets = VisibleRecommendationTargetDetector().targets(in: observations)
+
+        XCTAssertEqual(targets.filter { $0.displayedAge == 21 }.count, 1)
+    }
+
+    func testRankerChoosesYoungestEligibleCardBeforeLeftmostOlderCard() throws {
+        let older = VisibleRecommendationTarget(
+            profileKey: "left-35",
+            displayedAge: 35,
+            ageEvidence: nil,
+            photoPoint: NormalizedPoint(x: 0.15, y: 0.62),
+            safePhotoRegion: NormalizedRect(x: 0.08, y: 0.56, width: 0.14, height: 0.12),
+            confidence: 0.95
+        )
+        let age21 = VisibleRecommendationTarget(
+            profileKey: "right-21",
+            displayedAge: 21,
+            ageEvidence: nil,
+            photoPoint: NormalizedPoint(x: 0.62, y: 0.62),
+            safePhotoRegion: NormalizedRect(x: 0.55, y: 0.56, width: 0.14, height: 0.12),
+            confidence: 0.90
+        )
+        let age19 = VisibleRecommendationTarget(
+            profileKey: "middle-19",
+            displayedAge: 19,
+            ageEvidence: nil,
+            photoPoint: NormalizedPoint(x: 0.42, y: 0.62),
+            safePhotoRegion: NormalizedRect(x: 0.35, y: 0.56, width: 0.14, height: 0.12),
+            confidence: 0.88
+        )
+
+        let ranked = VisibleRecommendationTargetRanker().ranked([older, age21, age19])
+
+        XCTAssertEqual(try XCTUnwrap(ranked.first).profileKey, "middle-19")
+        XCTAssertEqual(ranked[1].profileKey, "right-21")
+        XCTAssertEqual(ranked.last?.profileKey, "left-35")
+    }
+
     private func observation(
         _ text: String,
         x: Double,

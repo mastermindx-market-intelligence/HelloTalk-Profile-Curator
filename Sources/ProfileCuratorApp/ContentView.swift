@@ -437,6 +437,7 @@ struct ContentView: View {
         switch decision {
         case .collectPrimary: "Primary · eligible"
         case .collectSecondary: "Secondary · eligible"
+        case .collectPreferredLocationNoMBTI: "Tier 1 · no MBTI · eligible with score deduction"
         case .routingOnly(let reason): "Routing only · \(reason)"
         }
     }

@@ -5,22 +5,31 @@ public struct OpenedProfileEvidence: Hashable, Sendable {
     public let age: Int?
     public let gender: GenderBadgeHint
     public let mbti: MBTIType?
+    public let locationScore: Int?
 
-    public init(username: String?, age: Int?, gender: GenderBadgeHint, mbti: MBTIType?) {
+    public init(
+        username: String?,
+        age: Int?,
+        gender: GenderBadgeHint,
+        mbti: MBTIType?,
+        locationScore: Int? = nil
+    ) {
         self.username = username
         self.age = age
         self.gender = gender
         self.mbti = mbti
+        self.locationScore = locationScore
     }
 }
 
 public enum ProfileEligibilityDecision: Equatable, Sendable {
     case collectPrimary
     case collectSecondary
+    case collectPreferredLocationNoMBTI
     case routingOnly(String)
 
     public var isCollectible: Bool {
-        self == .collectPrimary || self == .collectSecondary
+        self == .collectPrimary || self == .collectSecondary || self == .collectPreferredLocationNoMBTI
     }
 }
 
@@ -43,7 +52,9 @@ public struct ProfileEligibilityPolicy: Sendable {
         switch evidence.mbti?.group {
         case .primary: return .collectPrimary
         case .secondary: return .collectSecondary
-        case nil: return .routingOnly("target_mbti_missing")
+        case nil where evidence.mbti != nil: return .routingOnly("non_target_mbti")
+        case nil where evidence.locationScore == 100: return .collectPreferredLocationNoMBTI
+        case nil: return .routingOnly("target_mbti_missing_and_location_not_tier_1")
         }
     }
 }
@@ -223,6 +234,7 @@ public struct ScoringEngine: Sendable {
     public var secondaryLifestyleThreshold: Double
     public var secondaryOverallThreshold: Double
     public var secondaryLocationThreshold: Double
+    public var preferredLocationNoMBTIPenalty: Double
 
     public init(
         primaryWeights: ScoreWeights = .primary,
@@ -230,7 +242,8 @@ public struct ScoringEngine: Sendable {
         secondaryFaceThreshold: Double = 82,
         secondaryLifestyleThreshold: Double = 82,
         secondaryOverallThreshold: Double = 76,
-        secondaryLocationThreshold: Double = 100
+        secondaryLocationThreshold: Double = 100,
+        preferredLocationNoMBTIPenalty: Double = 8
     ) {
         self.primaryWeights = primaryWeights
         self.secondaryWeights = secondaryWeights
@@ -238,6 +251,7 @@ public struct ScoringEngine: Sendable {
         self.secondaryLifestyleThreshold = secondaryLifestyleThreshold
         self.secondaryOverallThreshold = secondaryOverallThreshold
         self.secondaryLocationThreshold = secondaryLocationThreshold
+        self.preferredLocationNoMBTIPenalty = min(25, max(0, preferredLocationNoMBTIPenalty))
     }
 
     public func score(group: MBTIGroup, components: ScoreComponents) -> ProfileScore {
@@ -254,5 +268,21 @@ public struct ScoringEngine: Sendable {
                 || components.location >= secondaryLocationThreshold
         )
         return ProfileScore(overall: overall, confidenceAdjusted: adjusted, secondaryHighPriority: highPriority)
+    }
+
+    public func scorePreferredLocationNoMBTI(components: ScoreComponents) -> ProfileScore {
+        let base = components.face * 0.55
+            + components.lifestyle * 0.35
+            + components.location * 0.10
+        let overall = max(0, base - preferredLocationNoMBTIPenalty)
+        let adjusted = overall * (0.75 + 0.25 * components.confidence)
+        let highPriority = components.face >= secondaryFaceThreshold
+            || components.lifestyle >= secondaryLifestyleThreshold
+            || overall >= secondaryOverallThreshold
+        return ProfileScore(
+            overall: overall,
+            confidenceAdjusted: adjusted,
+            secondaryHighPriority: highPriority
+        )
     }
 }

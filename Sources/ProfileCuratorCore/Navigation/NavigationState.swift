@@ -24,6 +24,7 @@ public enum NavigationState: String, CaseIterable, Codable, Sendable {
 public enum VisiblePostcondition: Codable, Hashable, Sendable {
     case contentHashChanged(previous: String)
     case ocrAnchorVisible(String)
+    case ocrAnchorAbsent(String)
     case viewerDetected
     case profilePageDetected
     case selectedTab(String)

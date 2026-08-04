@@ -150,7 +150,7 @@ private struct ProfileGridCard: View {
             Text(item.profile.usernameNormalized).font(.caption.monospaced()).foregroundStyle(.secondary)
             HStack {
                 signal(item.profile.age.map(String.init) ?? "Age ?")
-                signal(item.profile.mbti ?? "MBTI ?")
+                signal(item.profile.mbti ?? (item.profile.isPreferredLocationNoMBTI ? "No MBTI" : "MBTI ?"))
                 signal(item.profile.cityNormalized ?? item.profile.countryNormalized ?? "Location ?")
             }
             HStack {
@@ -217,8 +217,13 @@ private struct ProfileDetailView: View {
                         VStack(alignment: .leading, spacing: 7) {
                             DetailFieldRow(label: "Age", value: item.profile.age.map(String.init) ?? "Unverified")
                             DetailFieldRow(label: "Gender", value: humanized(item.profile.gender ?? "Unverified"))
-                            DetailFieldRow(label: "MBTI", value: item.profile.mbti ?? "Missing")
-                            DetailFieldRow(label: "Group", value: humanized(item.profile.mbtiGroup ?? "None"))
+                            DetailFieldRow(label: "MBTI", value: item.profile.mbti ?? "Not listed")
+                            DetailFieldRow(
+                                label: "Group",
+                                value: item.profile.isPreferredLocationNoMBTI
+                                    ? "Preferred-location exception"
+                                    : humanized(item.profile.mbtiGroup ?? "None")
+                            )
                             DetailFieldRow(
                                 label: "Location",
                                 value: item.profile.cityNormalized
@@ -242,6 +247,15 @@ private struct ProfileDetailView: View {
                             ScoreMetricRow(label: "Overall", value: item.profile.overallScore, emphasized: true)
                             ScoreMetricRow(label: "Analysis confidence", value: item.profile.analysisConfidence * 100)
                         }.frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if item.profile.isPreferredLocationNoMBTI {
+                        Label(
+                            "Tier 1 / no-MBTI exception: overall emphasizes face (55%) and lifestyle (35%), then applies an 8-point missing-MBTI deduction.",
+                            systemImage: "location.fill.viewfinder"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
                     }
                     if item.profile.bio != nil
                         || !item.profile.hobbies.isEmpty

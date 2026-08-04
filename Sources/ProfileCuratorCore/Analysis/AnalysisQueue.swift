@@ -193,17 +193,21 @@ public actor AnalysisQueueProcessor {
         }
 
         let overall: Double?
-        if let face, let lifestyle, let group = profile.typedGroup {
-            overall = ScoringEngine().score(
-                group: group,
-                components: ScoreComponents(
-                    face: face,
-                    lifestyle: lifestyle,
-                    location: Double(profile.locationScore ?? 10),
-                    completeness: profile.profileCompletenessScore,
-                    confidence: confidence
-                )
-            ).overall
+        if let face, let lifestyle {
+            let components = ScoreComponents(
+                face: face,
+                lifestyle: lifestyle,
+                location: Double(profile.locationScore ?? 10),
+                completeness: profile.profileCompletenessScore,
+                confidence: confidence
+            )
+            if let group = profile.typedGroup {
+                overall = ScoringEngine().score(group: group, components: components).overall
+            } else if profile.isPreferredLocationNoMBTI {
+                overall = ScoringEngine().scorePreferredLocationNoMBTI(components: components).overall
+            } else {
+                overall = profile.overallScore
+            }
         } else {
             overall = profile.overallScore
         }
