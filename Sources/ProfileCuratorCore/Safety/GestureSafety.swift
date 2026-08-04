@@ -95,20 +95,39 @@ public struct MomentViewerDismissPlanner: Sendable {
     public init() {}
 
     public func proposal(from marks: [CalibrationMark]) -> PlannedGesture? {
+        proposals(from: marks).first
+    }
+
+    public func proposals(from marks: [CalibrationMark]) -> [PlannedGesture] {
         guard let mark = marks.last(where: {
             $0.context == .momentViewer && $0.kind == .safeMomentDismissGesture
         }) else {
-            return nil
+            return []
         }
 
-        let x = mark.bounds.center.x
-        return PlannedGesture(
-            kind: .closeViewer,
-            start: NormalizedPoint(x: x, y: mark.bounds.minY + mark.bounds.height * 0.045),
-            end: NormalizedPoint(x: x, y: mark.bounds.minY + mark.bounds.height * 0.955),
-            requiredSafeRegion: mark.bounds,
-            rationale: "Calibrated letterbox-safe downward dismiss for the Moment viewer"
-        )
+        // A Moment image can occasionally treat a rapid mouse drag as a tap and
+        // merely toggle its transient chrome. Use three distinct, still-calibrated
+        // vertical paths so a retry never repeats an ineffective gesture exactly.
+        let paths: [(x: Double, startY: Double, endY: Double, label: String)] = [
+            (0.50, 0.03, 0.97, "center"),
+            (0.36, 0.07, 0.99, "left-center"),
+            (0.64, 0.02, 0.99, "right-center")
+        ]
+        return paths.map { path in
+            PlannedGesture(
+                kind: .closeViewer,
+                start: NormalizedPoint(
+                    x: mark.bounds.minX + mark.bounds.width * path.x,
+                    y: mark.bounds.minY + mark.bounds.height * path.startY
+                ),
+                end: NormalizedPoint(
+                    x: mark.bounds.minX + mark.bounds.width * path.x,
+                    y: mark.bounds.minY + mark.bounds.height * path.endY
+                ),
+                requiredSafeRegion: mark.bounds,
+                rationale: "Calibrated \(path.label) downward dismiss for the Moment viewer"
+            )
+        }
     }
 }
 

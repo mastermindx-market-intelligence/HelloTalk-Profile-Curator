@@ -857,9 +857,10 @@ final class InspectorViewModel: ObservableObject {
 
     private func dismissMomentViewer() async throws {
         guard let automationWindowFrame,
-              let gesture = momentDismissPlanner.proposal(from: calibrationMarks) else {
+              !momentDismissPlanner.proposals(from: calibrationMarks).isEmpty else {
             throw AutomationRuntimeError.calibrationMissing("Moment viewer / dismiss gesture")
         }
+        let gestures = momentDismissPlanner.proposals(from: calibrationMarks)
         let mark = calibrationMarks.last {
             $0.context == .momentViewer && $0.kind == .safeMomentDismissGesture
         }
@@ -867,7 +868,7 @@ final class InspectorViewModel: ObservableObject {
         let confirmed = Set(calibrationMarks.filter {
             $0.context == .momentViewer && $0.confirmed && $0.kind.isExclusion
         }.map(\.kind))
-        for attempt in 0..<2 {
+        for (attempt, gesture) in gestures.enumerated() {
             try await focusMirroringApp()
             sessionState.recordProposal(policy: sessionPolicy)
             let decision = try await liveInputExecutor.executeGesture(
@@ -886,9 +887,9 @@ final class InspectorViewModel: ObservableObject {
             automationActionCount += 1
             recordEvent(
                 .safetyDecision,
-                summary: "Executed closeViewer · Swipe down to dismiss Moment photo · attempt \(attempt + 1)"
+                summary: "Executed closeViewer · \(gesture.rationale) · attempt \(attempt + 1)"
             )
-            try await Task.sleep(for: .milliseconds(attempt == 0 ? 750 : 950))
+            try await Task.sleep(for: .milliseconds(900 + attempt * 150))
             let next = try await captureAutomationFrame()
             let changed = next.screen.kind != .momentViewer
             await liveInputExecutor.resolvePostcondition(passed: changed)
@@ -899,7 +900,7 @@ final class InspectorViewModel: ObservableObject {
             recordEvent(.postcondition, summary: "retry · Moment viewer remained open after dismiss gesture")
             try await Task.sleep(for: .milliseconds(250))
         }
-        throw AutomationRuntimeError.postconditionFailed("Moment viewer did not dismiss after two calibrated attempts")
+        throw AutomationRuntimeError.postconditionFailed("Moment viewer did not dismiss after three distinct calibrated attempts")
     }
 
     private func momentKeys(_ target: MomentThumbnailTarget) -> Set<String> {

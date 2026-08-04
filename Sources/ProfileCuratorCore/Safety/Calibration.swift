@@ -200,7 +200,7 @@ public enum ObservedHelloTalkCalibration {
         CalibrationMark(
             context: .momentViewer,
             kind: .safeMomentDismissGesture,
-            bounds: NormalizedRect(x: 0.12, y: 0.43, width: 0.76, height: 0.44),
+            bounds: NormalizedRect(x: 0.12, y: 0.27, width: 0.76, height: 0.60),
             confirmed: true
         ),
         CalibrationMark(

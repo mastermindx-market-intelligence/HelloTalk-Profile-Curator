@@ -217,6 +217,26 @@ final class MomentNavigationTests: XCTestCase {
         XCTAssertEqual(decision.rejection, .dryRunRequired)
     }
 
+    func testMomentDismissRetriesUseThreeDistinctCalibratedPaths() throws {
+        let mark = CalibrationMark(
+            context: .momentViewer,
+            kind: .safeMomentDismissGesture,
+            bounds: NormalizedRect(x: 0.12, y: 0.27, width: 0.76, height: 0.60),
+            confirmed: true
+        )
+
+        let gestures = MomentViewerDismissPlanner().proposals(from: [mark])
+
+        XCTAssertEqual(gestures.count, 3)
+        XCTAssertEqual(Set(gestures.map(\.start.x)).count, 3)
+        XCTAssertTrue(gestures.allSatisfy {
+            $0.requiredSafeRegion == mark.bounds
+                && mark.bounds.contains($0.start)
+                && mark.bounds.contains($0.end)
+                && $0.end.y - $0.start.y > 0.54
+        })
+    }
+
     func testInterstitialAdDismissUsesDedicatedTopRightCloseRegion() throws {
         let action = try XCTUnwrap(InterstitialAdDismissPlanner().closeAction(observations: [
             OCRObservation(

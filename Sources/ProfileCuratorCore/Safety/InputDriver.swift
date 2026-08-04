@@ -30,6 +30,19 @@ public actor CGEventInputDriver: InputDriving {
         case .drag(let start, let end):
             let globalStart = globalPoint(start, in: windowFrame)
             let globalEnd = globalPoint(end, in: windowFrame)
+            guard let moveToStart = CGEvent(
+                mouseEventSource: nil,
+                mouseType: .mouseMoved,
+                mouseCursorPosition: globalStart,
+                mouseButton: .left
+            ) else {
+                throw InputDriverError.eventCreationFailed
+            }
+            // Teleporting the pointer and pressing in the same HID cycle is
+            // intermittently interpreted by iPhone Mirroring as a tap. Settle at
+            // the calibrated origin first, then hold briefly before moving.
+            moveToStart.post(tap: .cghidEventTap)
+            try await Task.sleep(for: .milliseconds(45))
             guard let down = CGEvent(
                 mouseEventSource: nil,
                 mouseType: .leftMouseDown,
@@ -39,8 +52,9 @@ public actor CGEventInputDriver: InputDriving {
                 throw InputDriverError.eventCreationFailed
             }
             down.post(tap: .cghidEventTap)
-            for step in 1...12 {
-                let progress = CGFloat(step) / 12
+            try await Task.sleep(for: .milliseconds(55))
+            for step in 1...18 {
+                let progress = CGFloat(step) / 18
                 let point = CGPoint(
                     x: globalStart.x + (globalEnd.x - globalStart.x) * progress,
                     y: globalStart.y + (globalEnd.y - globalStart.y) * progress
@@ -54,7 +68,7 @@ public actor CGEventInputDriver: InputDriving {
                     throw InputDriverError.eventCreationFailed
                 }
                 moved.post(tap: .cghidEventTap)
-                try await Task.sleep(for: .milliseconds(12))
+                try await Task.sleep(for: .milliseconds(10))
             }
             guard let up = CGEvent(
                 mouseEventSource: nil,
