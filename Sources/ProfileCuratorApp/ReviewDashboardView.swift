@@ -145,6 +145,14 @@ private struct ProfileGridCard: View {
             HStack {
                 Text(item.profile.displayName ?? item.profile.usernameNormalized).font(.headline).lineLimit(1)
                 Spacer()
+                if item.profile.hasVisibleTattoo {
+                    Label("Tattoo", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.red.opacity(0.14), in: Capsule())
+                }
                 Text(item.profile.status).font(.caption2).padding(.horizontal, 6).padding(.vertical, 3).background(.quaternary, in: Capsule())
             }
             Text(item.profile.usernameNormalized).font(.caption.monospaced()).foregroundStyle(.secondary)
@@ -242,6 +250,9 @@ private struct ProfileDetailView: View {
                             DetailFieldRow(label: "First seen", value: item.profile.firstSeenAt.formatted(date: .abbreviated, time: .shortened))
                             DetailFieldRow(label: "Last seen", value: item.profile.lastSeenAt.formatted(date: .abbreviated, time: .shortened))
                             DetailFieldRow(label: "Visits", value: String(item.profile.visitCount))
+                            if item.profile.hasVisibleTattoo {
+                                DetailFieldRow(label: "Tattoo flag", value: "Visible tattoo confirmed by Qwen")
+                            }
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
                     DetailSection(title: "Score breakdown", systemImage: "chart.bar.fill") {
@@ -253,6 +264,11 @@ private struct ProfileDetailView: View {
                             ScoreMetricRow(label: "Profile completeness", value: item.profile.profileCompletenessScore)
                             ScoreMetricRow(label: "Overall", value: item.profile.overallScore, emphasized: true)
                             ScoreMetricRow(label: "Analysis confidence", value: item.profile.analysisConfidence * 100)
+                            if item.profile.hasVisibleTattoo {
+                                Label("Visible tattoo policy applied: Life score is fixed at 0.", systemImage: "exclamationmark.triangle.fill")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.red)
+                            }
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if item.profile.isPreferredLocationNoMBTI {
@@ -577,11 +593,15 @@ private struct QwenAnalysisCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 ScoreMetricRow(
                     label: "Final face score",
-                    value: max(0, result.visualAppealScore - result.photoQualityPenalty),
+                    value: result.visualAppealScore,
                     emphasized: true
                 )
-                ScoreMetricRow(label: "Presentation estimate", value: result.visualAppealScore)
-                ScoreMetricRow(label: "Photo-quality penalty", value: result.photoQualityPenalty, higherIsBetter: false)
+                if let bestSourceImageID = result.bestSourceImageID {
+                    Text("Best credible view: \(bestSourceImageID)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+                ScoreMetricRow(label: "Evidence-quality penalty (not deducted)", value: result.photoQualityPenalty, higherIsBetter: false)
                 ScoreMetricRow(label: "Confidence", value: result.confidence * 100)
                 if !result.notes.isEmpty {
                     VStack(alignment: .leading, spacing: 5) {
@@ -592,6 +612,26 @@ private struct QwenAnalysisCard: View {
                                 .labelStyle(TinyBulletLabelStyle())
                         }
                     }
+                }
+            }
+        } else if let result = run.tattooDetectionResult {
+            VStack(alignment: .leading, spacing: 10) {
+                BooleanBadge(label: "Visible tattoo", value: result.isConfirmed)
+                ScoreMetricRow(label: "Tattoo confidence", value: result.confidence * 100)
+                if !result.sourceImageIDs.isEmpty {
+                    Text("Evidence: \(result.sourceImageIDs.joined(separator: ", "))")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(Array(result.notes.enumerated()), id: \.offset) { _, note in
+                    Label(note, systemImage: "circle.fill")
+                        .font(.caption)
+                        .labelStyle(TinyBulletLabelStyle())
+                }
+                if result.isConfirmed {
+                    Text("Policy applied: Life score = 0")
+                        .font(.caption.bold())
+                        .foregroundStyle(.red)
                 }
             }
         } else if let result = run.lifestyleSignalResult {
@@ -630,6 +670,7 @@ private struct QwenAnalysisCard: View {
         switch AnalysisType(rawValue: run.analysisType) {
         case .faceVerification: "Face verification"
         case .visualAppeal: "Face presentation"
+        case .tattooDetection: "Tattoo check"
         case .lifestyle: "Lifestyle evidence"
         case nil: humanized(run.analysisType)
         }

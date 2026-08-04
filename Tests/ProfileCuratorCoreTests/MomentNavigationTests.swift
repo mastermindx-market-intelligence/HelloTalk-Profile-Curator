@@ -217,8 +217,14 @@ final class MomentNavigationTests: XCTestCase {
         XCTAssertEqual(decision.rejection, .dryRunRequired)
     }
 
-    func testInterstitialAdDismissUsesDedicatedTopRightCloseRegion() {
-        let action = InterstitialAdDismissPlanner().closeAction()
+    func testInterstitialAdDismissUsesDedicatedTopRightCloseRegion() throws {
+        let action = try XCTUnwrap(InterstitialAdDismissPlanner().closeAction(observations: [
+            OCRObservation(
+                text: "Chat Share with Al Strat chatting...",
+                confidence: 0.95,
+                bounds: NormalizedRect(x: 0.2, y: 0.3, width: 0.5, height: 0.05)
+            )
+        ]))
 
         XCTAssertEqual(action.kind, .closeViewer)
         XCTAssertGreaterThan(action.point.x, 0.85)
@@ -232,18 +238,40 @@ final class MomentNavigationTests: XCTestCase {
         ).isAllowed)
     }
 
-    func testInterstitialStoreLandingUsesDedicatedTopLeftCloseRegion() {
-        let action = InterstitialAdDismissPlanner().closeAction(observations: [
+    func testInterstitialStoreLandingUsesDedicatedTopLeftCloseRegion() throws {
+        let action = try XCTUnwrap(InterstitialAdDismissPlanner().closeAction(observations: [
             OCRObservation(
                 text: "Age Rating 18+ In-App Purchases",
                 confidence: 0.95,
                 bounds: NormalizedRect(x: 0.2, y: 0.3, width: 0.5, height: 0.05)
             )
-        ])
+        ]))
 
         XCTAssertEqual(action.kind, .closeViewer)
         XCTAssertLessThan(action.point.x, 0.15)
         XCTAssertLessThan(action.point.y, 0.20)
+        XCTAssertTrue(action.requiredSafeRegion?.contains(action.point) == true)
+    }
+
+    func testInterstitialCloseRefusesVisibleProfileTabs() {
+        let action = InterstitialAdDismissPlanner().closeAction(observations: [
+            OCRObservation(text: "About Me", confidence: 0.95, bounds: NormalizedRect(x: 0.1, y: 0.2, width: 0.2, height: 0.03)),
+            OCRObservation(text: "Moments 6", confidence: 0.95, bounds: NormalizedRect(x: 0.4, y: 0.2, width: 0.2, height: 0.03)),
+            OCRObservation(text: "Achievements", confidence: 0.95, bounds: NormalizedRect(x: 0.7, y: 0.2, width: 0.2, height: 0.03)),
+            OCRObservation(text: "Ad-Free Experience", confidence: 0.95, bounds: NormalizedRect(x: 0.5, y: 0.6, width: 0.3, height: 0.03))
+        ])
+
+        XCTAssertNil(action)
+    }
+
+    func testOverflowMenuDismissUsesOnlyBottomCancelAnchor() throws {
+        let action = try XCTUnwrap(ProfileOverflowMenuDismissPlanner().cancelAction(observations: [
+            OCRObservation(text: "Block", confidence: 0.98, bounds: NormalizedRect(x: 0.42, y: 0.70, width: 0.16, height: 0.03)),
+            OCRObservation(text: "Cancel", confidence: 0.98, bounds: NormalizedRect(x: 0.42, y: 0.87, width: 0.16, height: 0.03))
+        ]))
+
+        XCTAssertEqual(action.kind, .closeViewer)
+        XCTAssertGreaterThan(action.point.y, 0.80)
         XCTAssertTrue(action.requiredSafeRegion?.contains(action.point) == true)
     }
 

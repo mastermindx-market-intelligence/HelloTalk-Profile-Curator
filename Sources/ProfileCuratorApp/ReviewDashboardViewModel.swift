@@ -129,6 +129,7 @@ final class ReviewDashboardViewModel: ObservableObject {
                 let media = try repository.media(profileID: id, retainedOnly: true)
                 let configuration = try VLMConfigurationStore.defaultStore().load()
                 let facePaths = AnalysisMediaSelector.faceMedia(from: media).map(\.filePath)
+                let tattooPaths = AnalysisMediaSelector.tattooMedia(from: media).map(\.filePath)
                 let lifestylePaths = AnalysisMediaSelector.lifestyleMedia(from: media).map(\.filePath)
                 var queued = 0
                 if !facePaths.isEmpty {
@@ -147,6 +148,16 @@ final class ReviewDashboardViewModel: ObservableObject {
                         mediaPaths: Array(facePaths)
                     )
                     queued += 2
+                }
+                if !tattooPaths.isEmpty {
+                    _ = try repository.enqueueAnalysis(
+                        profileID: id,
+                        type: .tattooDetection,
+                        modelName: configuration.model,
+                        promptVersion: VLMPromptLibrary.tattooDetectionVersion,
+                        mediaPaths: Array(tattooPaths)
+                    )
+                    queued += 1
                 }
                 if !lifestylePaths.isEmpty {
                     _ = try repository.enqueueAnalysis(
@@ -259,7 +270,7 @@ final class ReviewDashboardViewModel: ObservableObject {
                 encoder.dateEncodingStrategy = .iso8601
                 try encoder.encode(profiles).write(to: url, options: .atomic)
             case .csv:
-                let header = "username,display_name,age,mbti,group,city,country,bio,hobbies,education,occupation,hobby_score,education_score,occupation_score,profile_signals_score,face_score,lifestyle_score,overall_score,confidence,status,first_seen,last_seen\n"
+                let header = "username,display_name,age,mbti,group,city,country,bio,hobbies,education,occupation,hobby_score,education_score,occupation_score,profile_signals_score,face_score,lifestyle_score,visible_tattoo,overall_score,confidence,status,first_seen,last_seen\n"
                 let rows = profiles.map(Self.csvRow).joined(separator: "\n")
                 try Data((header + rows).utf8).write(to: url, options: .atomic)
             }
@@ -351,6 +362,7 @@ final class ReviewDashboardViewModel: ObservableObject {
             profileSignalsScore,
             face,
             lifestyle,
+            profile.hasVisibleTattoo ? "true" : "false",
             overall,
             String(profile.analysisConfidence),
             profile.status,

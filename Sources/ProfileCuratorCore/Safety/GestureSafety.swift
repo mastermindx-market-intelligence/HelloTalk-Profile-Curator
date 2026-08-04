@@ -115,11 +115,23 @@ public struct MomentViewerDismissPlanner: Sendable {
 public struct InterstitialAdDismissPlanner: Sendable {
     public init() {}
 
-    public func closeAction(observations: [OCRObservation] = []) -> PlannedAction {
+    public func closeAction(observations: [OCRObservation] = []) -> PlannedAction? {
         let text = observations.map(\.text).joined(separator: " ")
+        let hasProfileTabs = text.localizedCaseInsensitiveContains("Moments")
+            && (text.localizedCaseInsensitiveContains("About Me")
+                || text.localizedCaseInsensitiveContains("Achievements"))
+        guard !hasProfileTabs else { return nil }
         let isStoreLanding = text.localizedCaseInsensitiveContains("Age Rating")
             || text.localizedCaseInsensitiveContains("In-App Purchases")
             || text.localizedCaseInsensitiveContains("Category")
+        let isAIPromo = text.localizedCaseInsensitiveContains("Share with")
+            && text.localizedCaseInsensitiveContains("chatting")
+        let genericAdMarkers = ["Install", "Ad-Free", "Sponsored", "Advertisement", "Download App"]
+        guard isStoreLanding
+                || isAIPromo
+                || genericAdMarkers.contains(where: { text.localizedCaseInsensitiveContains($0) }) else {
+            return nil
+        }
         if isStoreLanding {
             let region = NormalizedRect(x: 0.045, y: 0.11, width: 0.14, height: 0.10)
             return PlannedAction(
@@ -137,6 +149,33 @@ public struct InterstitialAdDismissPlanner: Sendable {
             point: NormalizedPoint(x: 0.887, y: 0.132),
             requiredSafeRegion: region,
             rationale: "Dismiss the verified full-screen ad using its top-right X"
+        )
+    }
+}
+
+public struct ProfileOverflowMenuDismissPlanner: Sendable {
+    public init() {}
+
+    public func cancelAction(observations: [OCRObservation]) -> PlannedAction? {
+        guard let cancel = observations
+            .filter({
+                $0.confidence >= 0.45
+                    && $0.text.localizedCaseInsensitiveContains("Cancel")
+                    && $0.bounds.center.y >= 0.72
+            })
+            .max(by: { $0.bounds.center.y < $1.bounds.center.y }) else {
+            return nil
+        }
+        let width = max(0.24, cancel.bounds.width + 0.12)
+        let height = max(0.065, cancel.bounds.height + 0.035)
+        let minX = min(max(0.03, cancel.bounds.center.x - width / 2), 0.97 - width)
+        let minY = min(max(0.70, cancel.bounds.center.y - height / 2), 0.97 - height)
+        let region = NormalizedRect(x: minX, y: minY, width: width, height: height)
+        return PlannedAction(
+            kind: .closeViewer,
+            point: cancel.bounds.center,
+            requiredSafeRegion: region,
+            rationale: "Dismiss the verified profile overflow menu using Cancel"
         )
     }
 }

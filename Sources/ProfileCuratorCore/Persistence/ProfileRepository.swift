@@ -26,6 +26,7 @@ public enum MediaKind: String, Codable, CaseIterable, Sendable {
 public enum AnalysisType: String, Codable, CaseIterable, Sendable {
     case faceVerification = "face_verification"
     case visualAppeal = "visual_appeal"
+    case tattooDetection = "tattoo_detection"
     case lifestyle
 }
 
@@ -56,6 +57,7 @@ public struct ProfileRecord: Codable, FetchableRecord, PersistableRecord, Identi
     public var profileSignalsScore: Double?
     public var faceScore: Double?
     public var lifestyleScore: Double?
+    public var hasVisibleTattoo: Bool
     public var profileCompletenessScore: Double
     public var overallScore: Double?
     public var analysisConfidence: Double
@@ -102,6 +104,7 @@ public struct ProfileRecord: Codable, FetchableRecord, PersistableRecord, Identi
         case profileSignalsScore = "profile_signals_score"
         case faceScore = "face_score"
         case lifestyleScore = "lifestyle_score"
+        case hasVisibleTattoo = "has_visible_tattoo"
         case profileCompletenessScore = "profile_completeness_score"
         case overallScore = "overall_score"
         case analysisConfidence = "analysis_confidence"
@@ -405,6 +408,7 @@ public final class ProfileRepository: @unchecked Sendable {
                 profileSignalsScore: signalScores.combined,
                 faceScore: existing?.faceScore,
                 lifestyleScore: existing?.lifestyleScore,
+                hasVisibleTattoo: existing?.hasVisibleTattoo ?? false,
                 profileCompletenessScore: max(draft.profileCompletenessScore, existing?.profileCompletenessScore ?? 0),
                 overallScore: existing?.overallScore,
                 analysisConfidence: existing?.analysisConfidence ?? 0,
@@ -494,12 +498,13 @@ public final class ProfileRepository: @unchecked Sendable {
         lifestyle: Double?,
         overall: Double?,
         confidence: Double,
+        hasVisibleTattoo: Bool? = nil,
         analyzedAt: Date = Date()
     ) throws {
         try databaseQueue.write {
             try $0.execute(
-                sql: "UPDATE profiles SET face_score = ?, lifestyle_score = ?, overall_score = ?, analysis_confidence = ?, last_analyzed_at = ?, status = CASE WHEN status IN ('shortlisted','rejected','contacted') THEN status ELSE 'review' END WHERE id = ?",
-                arguments: [face, lifestyle, overall, min(1, max(0, confidence)), analyzedAt, id]
+                sql: "UPDATE profiles SET face_score = ?, lifestyle_score = ?, overall_score = ?, analysis_confidence = ?, has_visible_tattoo = COALESCE(?, has_visible_tattoo), last_analyzed_at = ?, status = CASE WHEN status IN ('shortlisted','rejected','contacted') THEN status ELSE 'review' END WHERE id = ?",
+                arguments: [face, lifestyle, overall, min(1, max(0, confidence)), hasVisibleTattoo, analyzedAt, id]
             )
         }
     }
@@ -848,6 +853,11 @@ public final class ProfileRepository: @unchecked Sendable {
                 END
                 WHERE face_score IS NOT NULL AND lifestyle_score IS NOT NULL
                 """)
+        }
+        migrator.registerMigration("v5-visible-tattoo-flag") { database in
+            try database.alter(table: "profiles") { table in
+                table.add(column: "has_visible_tattoo", .boolean).notNull().defaults(to: false)
+            }
         }
         return migrator
     }

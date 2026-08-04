@@ -44,6 +44,25 @@ final class NavigationStateDetectorTests: XCTestCase {
         XCTAssertEqual(result.kind, .interstitialAd)
     }
 
+    func testMomentsGridWithEmbeddedAdTextIsNotAnInterstitial() {
+        let result = NavigationStateDetector().classify(fixture([
+            "About Me", "Moments 6", "Achievements", "2026-08",
+            "Download Now", "Ad-Free Experience", "AD X"
+        ]))
+
+        XCTAssertEqual(result.kind, .momentsFeed)
+    }
+
+    func testProfileOverflowMenuIsExplicitlyRecognized() {
+        let result = NavigationStateDetector().classify(fixture([
+            "Add Nickname/Notes", "Share to Partner", "Hide this user's Moments",
+            "Don't Show My Moments", "Block", "Report", "Cancel"
+        ]))
+
+        XCTAssertEqual(result.kind, .profileOverflowMenu)
+        XCTAssertEqual(result.navigationState, .collectMoments)
+    }
+
     func testMomentsFeedWithEmbeddedInstallAdRemainsMomentsFeed() {
         let analysis = FixtureAnalysis(
             imageWidth: 420,

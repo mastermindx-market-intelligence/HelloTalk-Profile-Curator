@@ -11,6 +11,7 @@ public enum DetectedScreenKind: String, Codable, CaseIterable, Hashable, Sendabl
     case momentsFeed
     case momentDetails
     case momentViewer
+    case profileOverflowMenu
     case interstitialAd
     case unknown
 }
@@ -45,11 +46,22 @@ public struct NavigationStateDetector: Sendable {
         if contains("AI Photo Gift", in: text) || contains("Avatar Effect", in: text) {
             return classification(.pfpViewer, .inspectPFPViewer, 0.98, ["PFP action rows"])
         }
+        if containsProfileOverflowMenu(in: text) {
+            return classification(
+                .profileOverflowMenu,
+                .collectMoments,
+                0.99,
+                ["Profile overflow actions and Cancel button"]
+            )
+        }
         if containsMomentsFeedAnchors(in: analysis) {
             return classification(.momentsFeed, .collectMoments, 0.9, ["Moments feed tab and activity anchors"])
         }
         if containsMomentsTimelineAnchors(in: analysis) {
             return classification(.momentsFeed, .collectMoments, 0.88, ["Moments timeline tab and dated post anchors"])
+        }
+        if containsMomentsGridAnchors(in: text) {
+            return classification(.momentsFeed, .collectMoments, 0.9, ["Moments grid tabs and month header"])
         }
         if contains("Details", in: text)
             && (contains("Type a message", in: text) || contains("Comments", in: text)) {
@@ -118,6 +130,9 @@ public struct NavigationStateDetector: Sendable {
     }
 
     private func containsAdvertisingInterstitial(in text: String) -> Bool {
+        let hasProfileTabs = contains("Moments", in: text)
+            && (contains("About Me", in: text) || contains("Achievements", in: text))
+        if hasProfileTabs { return false }
         let hasHelloTalkAIPromo = contains("Chat", in: text)
             && contains("Share with", in: text)
             && contains("chatting", in: text)
@@ -130,6 +145,25 @@ public struct NavigationStateDetector: Sendable {
             "Sponsored", "Advertisement", "Download App", "Install"
         ]
         return markers.contains { contains($0, in: text) }
+    }
+
+    private func containsProfileOverflowMenu(in text: String) -> Bool {
+        contains("Add Nickname", in: text)
+            && contains("Hide this user's Moments", in: text)
+            && contains("Block", in: text)
+            && contains("Report", in: text)
+            && contains("Cancel", in: text)
+    }
+
+    private func containsMomentsGridAnchors(in text: String) -> Bool {
+        let hasTabs = contains("Moments", in: text)
+            && contains("About Me", in: text)
+            && contains("Achievements", in: text)
+        let hasMonthHeader = text.range(
+            of: #"\b20\d{2}[-/.]\d{1,2}\b"#,
+            options: .regularExpression
+        ) != nil
+        return hasTabs && hasMonthHeader
     }
 
     private func containsLiveViewerBadge(in analysis: FixtureAnalysis) -> Bool {

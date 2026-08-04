@@ -105,12 +105,14 @@ public struct VisualAppealResult: Codable, Hashable, Sendable {
     public let confidence: Double
     public let photoQualityPenalty: Double
     public let notes: [String]
+    public let bestSourceImageID: String?
 
     private enum CodingKeys: String, CodingKey {
         case visualAppealScore = "visual_appeal_score"
         case confidence
         case photoQualityPenalty = "photo_quality_penalty"
         case notes
+        case bestSourceImageID = "best_source_image_id"
     }
 
     public init(from decoder: Decoder) throws {
@@ -122,6 +124,39 @@ public struct VisualAppealResult: Codable, Hashable, Sendable {
             notes = values
         } else {
             notes = [try container.decode(String.self, forKey: .notes)]
+        }
+        bestSourceImageID = try container.decodeIfPresent(String.self, forKey: .bestSourceImageID)
+    }
+}
+
+public struct TattooDetectionResult: Codable, Hashable, Sendable {
+    public let hasVisibleTattoo: Bool
+    public let confidence: Double
+    public let sourceImageIDs: [String]
+    public let notes: [String]
+
+    public var isConfirmed: Bool {
+        hasVisibleTattoo && confidence >= 0.75 && !sourceImageIDs.isEmpty
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case hasVisibleTattoo = "visible_tattoo"
+        case confidence = "tattoo_confidence"
+        case sourceImageIDs = "source_image_ids"
+        case notes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        hasVisibleTattoo = try container.decode(Bool.self, forKey: .hasVisibleTattoo)
+        confidence = normalizedConfidence(try container.decode(Double.self, forKey: .confidence))
+        sourceImageIDs = try container.decodeIfPresent([String].self, forKey: .sourceImageIDs) ?? []
+        if let values = try? container.decode([String].self, forKey: .notes) {
+            notes = values
+        } else if let value = try? container.decode(String.self, forKey: .notes) {
+            notes = [value]
+        } else {
+            notes = []
         }
     }
 }
@@ -234,6 +269,10 @@ public extension AnalysisRunRecord {
         decodeResponse(VisualAppealResult.self, expectedType: .visualAppeal)
     }
 
+    var tattooDetectionResult: TattooDetectionResult? {
+        decodeResponse(TattooDetectionResult.self, expectedType: .tattooDetection)
+    }
+
     var lifestyleSignalResult: LifestyleSignalResult? {
         decodeResponse(LifestyleSignalResult.self, expectedType: .lifestyle)
     }
@@ -252,7 +291,8 @@ public extension AnalysisRunRecord {
 
 public enum VLMPromptLibrary {
     public static let faceVerificationVersion = "face-verification-v2"
-    public static let visualAppealVersion = "visual-appeal-v2"
+    public static let visualAppealVersion = "visual-appeal-v3"
+    public static let tattooDetectionVersion = "tattoo-detection-v1"
     public static let lifestyleVersion = "lifestyle-evidence-v3"
 
     public static let faceVerification = """
@@ -260,7 +300,11 @@ public enum VLMPromptLibrary {
     """
 
     public static let visualAppeal = """
-    Return JSON only. Estimate generic visible facial presentation and photographic clarity, not identity, ethnicity, personality, income, or compatibility. Score 0 to 100. Use keys: visual_appeal_score, confidence, photo_quality_penalty, notes, source_image_ids. confidence must be from 0.0 to 1.0, photo_quality_penalty must be from 0 to 100, and notes must be an array of strings. Treat this as a model estimate, not an objective fact.
+    Return JSON only. Estimate generic visible facial presentation, not identity, ethnicity, personality, income, or compatibility. Compare every attached image and base visual_appeal_score on the single best sufficiently credible view of the natural face. A novelty overlay such as dog ears, an animal nose, stickers, beauty smoothing, blur, crop, lighting, or compression lowers evidence confidence and photo_quality_penalty quality; it must NOT be mathematically subtracted from visual_appeal_score. Ignore the overlay itself and prefer another clearer image when available. If every view is filtered, give a conservative best estimate and lower confidence instead of defaulting the face score to 50. Score 0 to 100. Use keys: visual_appeal_score, confidence, photo_quality_penalty, best_source_image_id, notes, source_image_ids. best_source_image_id must be one supplied image ID. confidence must be from 0.0 to 1.0, photo_quality_penalty must be from 0 to 100, and notes must be an array of strings. Treat this as a model estimate, not an objective fact.
+    """
+
+    public static let tattooDetection = """
+    Return JSON only. Inspect every attached image for a clearly visible permanent tattoo on the profile subject's skin. Do not infer hidden tattoos. Do not count clothing prints, jewelry, makeup, stickers, shadows, hair, image overlays, or background art. Set visible_tattoo true only when ink-like body art is visibly supported by at least one exact supplied source image ID; otherwise set it false. Use keys: visible_tattoo, tattoo_confidence, source_image_ids, notes. tattoo_confidence must be from 0.0 to 1.0. source_image_ids must contain only the exact supplied IDs that visibly support the finding and must be empty when visible_tattoo is false. notes must be a short array of factual visual observations without identity or personality claims.
     """
 
     public static let lifestyle = """

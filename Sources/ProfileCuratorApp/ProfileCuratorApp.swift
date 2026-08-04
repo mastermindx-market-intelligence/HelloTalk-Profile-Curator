@@ -7,6 +7,7 @@ struct ProfileCuratorApp: App {
     var body: some Scene {
         WindowGroup("Profile Curator Inspector") {
             ContentView(model: model)
+                .dynamicTypeSize(.xLarge)
                 .frame(minWidth: 1_100, minHeight: 720)
 #if DEBUG
                 .task {

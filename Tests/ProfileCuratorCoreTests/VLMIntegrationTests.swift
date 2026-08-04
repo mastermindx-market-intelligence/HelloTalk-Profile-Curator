@@ -110,9 +110,73 @@ final class VLMIntegrationTests: XCTestCase {
         XCTAssertTrue(processed)
         XCTAssertEqual(try context.repository.analysisJobs(profileID: profile.id).first?.state, .succeeded)
         let updated = try XCTUnwrap(context.repository.profile(id: profile.id))
-        XCTAssertEqual(try XCTUnwrap(updated.faceScore), 80, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(updated.faceScore), 82, accuracy: 0.001)
         XCTAssertEqual(updated.analysisConfidence, 0.7, accuracy: 0.001)
         XCTAssertEqual(try context.repository.analysisRuns(profileID: profile.id).count, 1)
+    }
+
+    func testFilteredPhotoQualityPenaltyDoesNotReduceStoredFaceEstimate() async throws {
+        let context = try temporaryRepository()
+        let profile = try context.repository.upsert(ProfileDraft(usernameRaw: "@filtered", age: 20, gender: .female, mbti: .infj))
+        _ = try context.repository.enqueueAnalysis(
+            profileID: profile.id,
+            type: .visualAppeal,
+            modelName: "qwen3.5:9b",
+            promptVersion: VLMPromptLibrary.visualAppealVersion,
+            mediaPaths: []
+        )
+        let response = Data(#"{"visual_appeal_score":85,"confidence":0.72,"photo_quality_penalty":35,"best_source_image_id":"image-1","notes":["dog overlay lowers evidence quality"]}"#.utf8)
+        let processor = AnalysisQueueProcessor(
+            repository: context.repository,
+            client: MockVLMClient(result: .success(response)),
+            configuration: VLMConfiguration()
+        )
+
+        let processed = await processor.processNext()
+        XCTAssertTrue(processed)
+        let updated = try XCTUnwrap(context.repository.profile(id: profile.id))
+        XCTAssertEqual(try XCTUnwrap(updated.faceScore), 85, accuracy: 0.001)
+    }
+
+    func testConfirmedTattooFlagsProfileAndForcesLifestyleToZero() async throws {
+        let context = try temporaryRepository()
+        let profile = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@tattoo",
+            age: 20,
+            gender: .female,
+            mbti: .infj
+        ))
+        try context.repository.updateScores(
+            id: profile.id,
+            face: 84,
+            lifestyle: 78,
+            overall: 72,
+            confidence: 0.8
+        )
+        let image = context.root.appendingPathComponent("tattoo.png")
+        try Data("image".utf8).write(to: image)
+        _ = try context.repository.enqueueAnalysis(
+            profileID: profile.id,
+            type: .tattooDetection,
+            modelName: "qwen3.5:9b",
+            promptVersion: VLMPromptLibrary.tattooDetectionVersion,
+            mediaPaths: [image.path]
+        )
+        let response = Data(#"{"visible_tattoo":true,"tattoo_confidence":0.94,"source_image_ids":["image-1"],"notes":["Ink pattern visible on forearm"]}"#.utf8)
+        let processor = AnalysisQueueProcessor(
+            repository: context.repository,
+            client: MockVLMClient(result: .success(response)),
+            configuration: VLMConfiguration()
+        )
+
+        let processed = await processor.processNext()
+        XCTAssertTrue(processed)
+        let updated = try XCTUnwrap(context.repository.profile(id: profile.id))
+        XCTAssertTrue(updated.hasVisibleTattoo)
+        XCTAssertEqual(try XCTUnwrap(updated.lifestyleScore), 0, accuracy: 0.001)
+        let run = try XCTUnwrap(context.repository.analysisRuns(profileID: profile.id).first)
+        XCTAssertEqual(run.tattooDetectionResult?.sourceImageIDs, ["image-1"])
+        XCTAssertTrue(run.tattooDetectionResult?.isConfirmed == true)
     }
 
     func testSuccessfulRunPersistsOrderedImageEvidenceLinks() async throws {

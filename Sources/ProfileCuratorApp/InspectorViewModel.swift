@@ -256,7 +256,7 @@ final class InspectorViewModel: ObservableObject {
         switch screenClassification?.kind {
         case .connectFeed, .customSearch: .connectFeed
         case .pfpViewer: .pfpViewer
-        case .momentsFeed, .momentDetails: .momentsFeed
+        case .momentsFeed, .momentDetails, .profileOverflowMenu: .momentsFeed
         case .momentViewer, .interstitialAd: .momentViewer
         default: .profile
         }
@@ -497,13 +497,28 @@ final class InspectorViewModel: ObservableObject {
             automationPendingMomentKeys = []
             try await dismissMomentViewer()
 
+        case .profileOverflowMenu:
+            guard let observations = analysis?.text,
+                  let cancel = ProfileOverflowMenuDismissPlanner().cancelAction(observations: observations) else {
+                throw AutomationRuntimeError.unknownState("Profile overflow menu Cancel anchor is unavailable")
+            }
+            _ = try await performClick(
+                cancel,
+                context: .momentsFeed,
+                expecting: .profilePageDetected
+            )
+            if currentCollectedProfile() != nil { automationPhase = .scanMoments }
+
         case .interstitialAd:
             guard automationPhase == .scanMoments else {
                 throw AutomationRuntimeError.unknownState("Advertising overlay appeared outside Moment collection")
             }
             automationStatus = "Recovering · dismissing full-screen ad"
+            guard let close = InterstitialAdDismissPlanner().closeAction(observations: analysis?.text ?? []) else {
+                throw AutomationRuntimeError.unknownState("Refusing ad-close coordinate on a visible profile surface")
+            }
             _ = try await performClick(
-                InterstitialAdDismissPlanner().closeAction(observations: analysis?.text ?? []),
+                close,
                 context: .momentViewer,
                 expecting: .contentHashChanged(previous: snapshot.fingerprint)
             )
@@ -1432,6 +1447,7 @@ final class InspectorViewModel: ObservableObject {
             }
             let config = try VLMConfigurationStore.defaultStore().load()
             let facePaths = AnalysisMediaSelector.faceMedia(from: media).map(\.filePath)
+            let tattooPaths = AnalysisMediaSelector.tattooMedia(from: media).map(\.filePath)
             let lifestylePaths = AnalysisMediaSelector.lifestyleMedia(from: media).map(\.filePath)
             var queued = 0
             if !facePaths.isEmpty {
@@ -1450,6 +1466,16 @@ final class InspectorViewModel: ObservableObject {
                     mediaPaths: Array(facePaths)
                 )
                 queued += 2
+            }
+            if !tattooPaths.isEmpty {
+                _ = try profileRepository.enqueueAnalysis(
+                    profileID: profile.id,
+                    type: .tattooDetection,
+                    modelName: config.model,
+                    promptVersion: VLMPromptLibrary.tattooDetectionVersion,
+                    mediaPaths: Array(tattooPaths)
+                )
+                queued += 1
             }
             if !lifestylePaths.isEmpty {
                 _ = try profileRepository.enqueueAnalysis(
@@ -1673,9 +1699,17 @@ final class InspectorViewModel: ObservableObject {
     }
 
     private func exclusionZones(for context: CalibrationContext) -> [ExclusionZone] {
-        calibrationMarks.filter { $0.context == context && $0.kind.isExclusion }.map {
+        var zones = calibrationMarks.filter { $0.context == context && $0.kind.isExclusion }.map {
             ExclusionZone(label: $0.kind.displayName, bounds: $0.bounds)
         }
+        if context == .momentsFeed,
+           !zones.contains(where: { $0.label == CalibrationMarkKind.excludeOverflowMenu.displayName }) {
+            zones.append(ExclusionZone(
+                label: CalibrationMarkKind.excludeOverflowMenu.displayName,
+                bounds: NormalizedRect(x: 0.86, y: 0.075, width: 0.10, height: 0.095)
+            ))
+        }
+        return zones
     }
 
     private func validateWindowGeometry(_ frame: CapturedWindowFrame) throws {

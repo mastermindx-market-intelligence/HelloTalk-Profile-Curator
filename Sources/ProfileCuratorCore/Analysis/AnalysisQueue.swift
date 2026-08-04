@@ -56,7 +56,8 @@ public actor AnalysisQueueProcessor {
         guard let job = try? repository.nextAnalysisJob(now: now) else { return false }
         do {
             try repository.updateAnalysisJob(id: job.id, state: .running, attemptCount: job.attemptCount + 1, nextAttemptAt: nil, error: nil, now: now)
-            let selectedPaths = Array(job.mediaPaths.prefix(3))
+            let imageLimit = job.analysisType == .tattooDetection ? 5 : 3
+            let selectedPaths = Array(job.mediaPaths.prefix(imageLimit))
             let imageReferences = selectedPaths.enumerated().map {
                 AnalysisImageReference(sourceImageID: "image-\($0.offset + 1)", filePath: $0.element)
             }
@@ -104,6 +105,7 @@ public actor AnalysisQueueProcessor {
         switch type {
         case .faceVerification: VLMPromptLibrary.faceVerification
         case .visualAppeal: VLMPromptLibrary.visualAppeal
+        case .tattooDetection: VLMPromptLibrary.tattooDetection
         case .lifestyle: VLMPromptLibrary.lifestyle
         }
     }
@@ -157,6 +159,7 @@ public actor AnalysisQueueProcessor {
     private enum DecodedResult {
         case faceVerification(FaceVerificationResult)
         case visualAppeal(VisualAppealResult)
+        case tattooDetection(TattooDetectionResult)
         case lifestyle(LifestyleSignalResult)
     }
 
@@ -166,6 +169,8 @@ public actor AnalysisQueueProcessor {
             return .faceVerification(try JSONDecoder().decode(FaceVerificationResult.self, from: data))
         case .visualAppeal:
             return .visualAppeal(try JSONDecoder().decode(VisualAppealResult.self, from: data))
+        case .tattooDetection:
+            return .tattooDetection(try JSONDecoder().decode(TattooDetectionResult.self, from: data))
         case .lifestyle:
             let result = try JSONDecoder().decode(LifestyleSignalResult.self, from: data)
             guard result.actualWealth.lowercased() == "unknown" else { throw VLMClientError.invalidResponse }
@@ -177,12 +182,16 @@ public actor AnalysisQueueProcessor {
         guard let profile = try repository.profile(id: profileID) else { return }
         var face = profile.faceScore
         var lifestyle = profile.lifestyleScore
+        var hasVisibleTattoo = profile.hasVisibleTattoo
         var confidence = profile.analysisConfidence
         switch result {
         case .faceVerification(let verification):
             confidence = max(confidence, normalizedConfidence(verification.confidence))
         case .visualAppeal(let value):
-            face = min(100, max(0, value.visualAppealScore - value.photoQualityPenalty))
+            face = value.visualAppealScore
+            confidence = combinedConfidence(existing: confidence, new: value.confidence)
+        case .tattooDetection(let value):
+            hasVisibleTattoo = value.isConfirmed
             confidence = combinedConfidence(existing: confidence, new: value.confidence)
         case .lifestyle(let value):
             lifestyle = ProfileSignalScorer().enrichLifestyle(
@@ -191,6 +200,7 @@ public actor AnalysisQueueProcessor {
             )
             confidence = combinedConfidence(existing: confidence, new: value.confidence)
         }
+        if hasVisibleTattoo { lifestyle = 0 }
 
         let overall: Double?
         if let face, let lifestyle {
@@ -225,7 +235,8 @@ public actor AnalysisQueueProcessor {
             face: face,
             lifestyle: lifestyle,
             overall: overall,
-            confidence: confidence
+            confidence: confidence,
+            hasVisibleTattoo: hasVisibleTattoo
         )
     }
 

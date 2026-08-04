@@ -25,6 +25,20 @@ public enum AnalysisMediaSelector {
             .prefix(max(1, limit)))
     }
 
+    public static func tattooMedia(from media: [MediaRecord], limit: Int = 5) -> [MediaRecord] {
+        let profileImages = media
+            .filter { $0.typedKind == .pfp || $0.typedKind == .profileTop }
+            .sorted { $0.typedKind == .pfp && $1.typedKind != .pfp }
+        let moments = media
+            .filter { $0.typedKind == .moment }
+            .filter(isCleanMomentPhoto)
+            .sorted { $0.sourceSequence < $1.sourceSequence }
+        var seen = Set<String>()
+        return Array((profileImages + moments)
+            .filter { seen.insert($0.id).inserted }
+            .prefix(max(1, limit)))
+    }
+
     private static func isHigherQualityFace(_ left: MediaRecord, _ right: MediaRecord) -> Bool {
         let leftQuality = left.faceCaptureQuality ?? 0
         let rightQuality = right.faceCaptureQuality ?? 0

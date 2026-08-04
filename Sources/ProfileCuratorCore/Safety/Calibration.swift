@@ -16,6 +16,7 @@ public enum CalibrationMarkKind: String, CaseIterable, Codable, Sendable, Identi
     case excludeGift
     case excludeMessageComposer
     case excludeAdControls
+    case excludeOverflowMenu
 
     public var id: String { rawValue }
 
@@ -36,12 +37,13 @@ public enum CalibrationMarkKind: String, CaseIterable, Codable, Sendable, Identi
         case .excludeGift: "Never click: Gift"
         case .excludeMessageComposer: "Never click: Message composer"
         case .excludeAdControls: "Never click: Ad controls"
+        case .excludeOverflowMenu: "Never click: Profile overflow menu"
         }
     }
 
     public var isExclusion: Bool {
         switch self {
-        case .excludeSayHi, .excludeFollow, .excludeLike, .excludeGift, .excludeMessageComposer, .excludeAdControls:
+        case .excludeSayHi, .excludeFollow, .excludeLike, .excludeGift, .excludeMessageComposer, .excludeAdControls, .excludeOverflowMenu:
             true
         default:
             false
@@ -187,6 +189,12 @@ public enum ObservedHelloTalkCalibration {
             context: .momentsFeed,
             kind: .safeMomentThumbnailGrid,
             bounds: NormalizedRect(x: 0.057, y: 0.20, width: 0.78, height: 0.66),
+            confirmed: true
+        ),
+        CalibrationMark(
+            context: .momentsFeed,
+            kind: .excludeOverflowMenu,
+            bounds: NormalizedRect(x: 0.86, y: 0.075, width: 0.10, height: 0.095),
             confirmed: true
         ),
         CalibrationMark(
