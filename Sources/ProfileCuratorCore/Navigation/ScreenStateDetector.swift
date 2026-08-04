@@ -87,9 +87,6 @@ public struct NavigationStateDetector: Sendable {
                 || (contains("Like", in: text) && contains("Comment", in: text))) {
             return classification(.momentsFeed, .collectMoments, 0.84, ["Moments feed anchors"])
         }
-        if let image, MomentViewerVisualDetector().matches(image, faces: analysis.faces) {
-            return classification(.momentViewer, .inspectMomentViewer, 0.8, ["Dark media frame and pagination strip"])
-        }
         if contains("Suggested for You", in: text) {
             return classification(
                 .suggestedProfilesGallery,
@@ -114,9 +111,19 @@ public struct NavigationStateDetector: Sendable {
         if contains("Connect", in: text) && (contains("Say Hi", in: text) || contains("Nearby", in: text)) {
             return classification(.connectFeed, .acquireSeedProfile, 0.86, ["Connect feed anchors"])
         }
+        // A dark-theme profile can satisfy the hidden-chrome viewer pixel
+        // heuristic: its header/footer are dark and the map/photo supplies
+        // central non-dark content. All recognized OCR surfaces must therefore
+        // win before the image-only viewer fallback is considered.
+        if containsProfileSurfaceAnchors(in: text) {
+            return classification(.profileTop, .profileTop, 0.95, ["Profile tabs and social bar"])
+        }
         if headerParser.bestAge(in: analysis.text) != nil &&
             (contains("Follow", in: text) || contains("Say Hi", in: text)) {
             return classification(.profileTop, .profileTop, 0.82, ["Age badge", "Profile social bar"])
+        }
+        if let image, MomentViewerVisualDetector().matches(image, faces: analysis.faces) {
+            return classification(.momentViewer, .inspectMomentViewer, 0.8, ["Dark media frame and pagination strip"])
         }
 
         return classification(.unknown, .pausedUnknownState, 0, [])
@@ -165,6 +172,14 @@ public struct NavigationStateDetector: Sendable {
             && contains("Block", in: text)
             && contains("Report", in: text)
             && contains("Cancel", in: text)
+    }
+
+    private func containsProfileSurfaceAnchors(in text: String) -> Bool {
+        let hasTabs = contains("About Me", in: text)
+            && contains("Moments", in: text)
+            && contains("Achievements", in: text)
+        let hasSocialBar = contains("Follow", in: text) && contains("Say Hi", in: text)
+        return hasTabs && hasSocialBar
     }
 
     private func containsMomentsGridAnchors(in text: String) -> Bool {

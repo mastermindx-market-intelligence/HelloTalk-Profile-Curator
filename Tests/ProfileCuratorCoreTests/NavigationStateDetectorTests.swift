@@ -72,6 +72,34 @@ final class NavigationStateDetectorTests: XCTestCase {
         XCTAssertEqual(result.navigationState, .inspectMomentViewer)
     }
 
+    func testDarkProfileChromeWinsBeforeHiddenViewerVisualFallback() throws {
+        let width = 420
+        let height = 932
+        let context = try XCTUnwrap(CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.setFillColor(CGColor(gray: 0.02, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(CGColor(red: 0.44, green: 0.62, blue: 0.52, alpha: 1))
+        context.fill(CGRect(x: 25, y: 250, width: 370, height: 430))
+        let image = try XCTUnwrap(context.makeImage())
+        let analysis = fixture([
+            "Kim", "18", "About Me", "Moments", "Achievements", "Follow", "Say Hi"
+        ])
+
+        let result = NavigationStateDetector().classify(analysis, image: image)
+
+        XCTAssertEqual(result.kind, .profileTop)
+        XCTAssertEqual(result.navigationState, .profileTop)
+        XCTAssertTrue(result.evidence.contains("Profile tabs and social bar"))
+    }
+
     func testFullScreenAIPromoIsAnInterstitialAd() {
         let result = NavigationStateDetector().classify(fixture(["Chat", "Share with AI", "Start chatting..."]))
 
