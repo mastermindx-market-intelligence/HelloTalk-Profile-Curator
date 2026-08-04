@@ -4,6 +4,38 @@ import XCTest
 @testable import ProfileCuratorCore
 
 final class MomentNavigationTests: XCTestCase {
+    func testOptionalLiveTopTimelineVideoTargetsVideoAboveAd() throws {
+        guard let path = ProcessInfo.processInfo.environment["HELLOTALK_TOP_TIMELINE_VIDEO"] else {
+            throw XCTSkip("No live top-timeline video fixture supplied")
+        }
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let analysis = try VisionFixtureAnalyzer().analyze(image)
+        let mark = CalibrationMark(
+            context: .momentsFeed,
+            kind: .safeMomentThumbnailGrid,
+            bounds: NormalizedRect(x: 0.057, y: 0.20, width: 0.78, height: 0.66),
+            confirmed: true
+        )
+
+        let targets = MomentThumbnailTargetDetector().targets(
+            in: image,
+            from: [mark],
+            observations: analysis.text,
+            faces: analysis.faces
+        )
+
+        XCTAssertEqual(
+            targets.count,
+            1,
+            "OCR: \(analysis.text.map { ($0.text, $0.bounds) }); targets: \(targets)"
+        )
+        guard let target = targets.first else { return }
+        XCTAssertGreaterThan(target.point.y, 0.30)
+        XCTAssertLessThan(target.point.y, 0.58)
+        XCTAssertLessThan(target.point.x, 0.32)
+    }
+
     func testOptionalLiveSinglePhotoPostTargetsThePhotoFaceInsteadOfPostChrome() throws {
         guard let path = ProcessInfo.processInfo.environment["HELLOTALK_SINGLE_PHOTO_POST"] else {
             throw XCTSkip("No live single-photo post fixture supplied")
@@ -333,6 +365,34 @@ final class MomentNavigationTests: XCTestCase {
         XCTAssertEqual(targets.count, 1)
         XCTAssertEqual(targets.first?.index, 100)
         XCTAssertGreaterThan(targets.first?.point.y ?? 0, 0.72)
+    }
+
+    func testTopTimelineVideoTargetsMediaAboveFollowingAd() throws {
+        let mark = CalibrationMark(
+            context: .momentsFeed,
+            kind: .safeMomentThumbnailGrid,
+            bounds: NormalizedRect(x: 0.057, y: 0.20, width: 0.78, height: 0.66),
+            confirmed: true
+        )
+        let image = try makeTimelinePostImage()
+        let observations = [
+            OCRObservation(text: "About Me", confidence: 0.98, bounds: NormalizedRect(x: 0.08, y: 0.15, width: 0.2, height: 0.03)),
+            OCRObservation(text: "Moments 1", confidence: 0.98, bounds: NormalizedRect(x: 0.37, y: 0.15, width: 0.22, height: 0.03)),
+            OCRObservation(text: "Achievements", confidence: 0.98, bounds: NormalizedRect(x: 0.66, y: 0.15, width: 0.26, height: 0.03)),
+            OCRObservation(text: "2026-07", confidence: 0.98, bounds: NormalizedRect(x: 0.06, y: 0.21, width: 0.18, height: 0.03)),
+            OCRObservation(text: "Amazon Shopping · Get the App · AD X", confidence: 0.98, bounds: NormalizedRect(x: 0.08, y: 0.62, width: 0.78, height: 0.05))
+        ]
+
+        let targets = MomentThumbnailTargetDetector().targets(
+            in: image,
+            from: [mark],
+            observations: observations
+        )
+
+        XCTAssertEqual(targets.count, 1)
+        XCTAssertGreaterThan(targets[0].point.y, 0.35)
+        XCTAssertLessThan(targets[0].point.y, 0.50)
+        XCTAssertLessThan(targets[0].point.x, 0.30)
     }
 
     func testLaterAlignedRowsBeatSingleThreeColumnDistractor() throws {

@@ -249,7 +249,9 @@ public struct MomentThumbnailTargetDetector: Sendable {
                 of: postTimePattern,
                 options: [.regularExpression, .caseInsensitive]
             ) != nil else { return false }
-            if let tabBottom { return observation.bounds.center.y > tabBottom + 0.04 }
+            // Tiny month labels can sit only ~3–4% below the tab text. Requiring
+            // a 4% gap rejected the real top-of-feed `2026-07` video header.
+            if let tabBottom { return observation.bounds.center.y > tabBottom + 0.02 }
             return true
         }.sorted { $0.bounds.center.y < $1.bounds.center.y }
         guard !postTimes.isEmpty else { return [] }
@@ -258,7 +260,10 @@ public struct MomentThumbnailTargetDetector: Sendable {
         for (index, postTime) in postTimes.enumerated() {
             let point = NormalizedPoint(
                 x: searchMark.bounds.minX + min(0.18, searchMark.bounds.width * 0.30),
-                y: min(searchMark.bounds.maxY - 0.07, max(0.72, postTime.bounds.maxY + 0.12))
+                // Timeline media begins below its month/date label. The old
+                // hard 0.72 floor landed inside the ad beneath a top-of-feed
+                // video, causing the safety filter to remove the only target.
+                y: min(searchMark.bounds.maxY - 0.07, postTime.bounds.maxY + 0.18)
             )
             guard searchMark.bounds.contains(point),
                   !isAdvertisingPoint(point, observations: observations, verticalTolerance: 0.14) else {
