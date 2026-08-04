@@ -101,6 +101,18 @@ final class CollectionPolicyTests: XCTestCase {
         )).isCollectible)
     }
 
+    func testGuangzhouENFPIsCollectedAsSecondary() {
+        let decision = ProfileEligibilityPolicy().evaluate(OpenedProfileEvidence(
+            username: "@parker",
+            age: 18,
+            gender: .female,
+            mbti: .enfp,
+            locationScore: 85
+        ))
+
+        XCTAssertEqual(decision, .collectSecondary)
+    }
+
     func testMissingLocationIsCollectibleAndPrimaryOverridesKnownLowTierLocation() {
         let policy = ProfileEligibilityPolicy()
 

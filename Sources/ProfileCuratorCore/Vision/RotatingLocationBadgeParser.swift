@@ -100,7 +100,7 @@ public struct RotatingLocationBadgeParser: Sendable {
     }
 
     private func isPlausibleBadgeBounds(_ bounds: NormalizedRect) -> Bool {
-        bounds.minX >= 0.35
+        bounds.minX >= 0.22
             && bounds.minY >= 0.10
             && bounds.maxY <= 0.45
             && bounds.height <= 0.09

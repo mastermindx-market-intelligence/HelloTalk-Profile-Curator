@@ -504,6 +504,17 @@ final class InspectorViewModel: ObservableObject {
                 try await continueAcquireProfileTop(previousFingerprint: snapshot.fingerprint)
                 return
             }
+            if automationPhase == .verifyPersonalInfo {
+                // Suggested profiles mark the physical end of Personal Info.
+                // Evaluate the profile before this screen is allowed to become
+                // navigation state, otherwise the last MBTI frame is skipped.
+                automationPersonalInfoVerificationAttempts = 4
+                try await continuePersonalInfoVerification(
+                    previousFingerprint: snapshot.fingerprint,
+                    recommendationGallerySnapshot: snapshot
+                )
+                return
+            }
             if automationPhase != .openRecommendation {
                 automationScrollAttempts = 0
                 automationNoProgressCount = 0
@@ -718,8 +729,12 @@ final class InspectorViewModel: ObservableObject {
         }
     }
 
-    private func continuePersonalInfoVerification(previousFingerprint: String?) async throws {
-        if profileAccumulator.mbti == nil,
+    private func continuePersonalInfoVerification(
+        previousFingerprint: String?,
+        recommendationGallerySnapshot: ObservationSnapshot? = nil
+    ) async throws {
+        if recommendationGallerySnapshot == nil,
+           profileAccumulator.mbti == nil,
            automationPersonalInfoVerificationAttempts < 4 {
             automationPersonalInfoVerificationAttempts += 1
             automationStatus = "Verifying Personal Info · MBTI scan \(automationPersonalInfoVerificationAttempts)/4"
@@ -758,6 +773,12 @@ final class InspectorViewModel: ObservableObject {
             automationStatus = "Routing past ineligible profile · \(reason)"
             if collectionRunMode == .customSearch {
                 try await returnToCustomSearch(context: .profile)
+                return
+            }
+            if let recommendationGallerySnapshot {
+                automationPhase = .openRecommendation
+                automationScrollAttempts = 0
+                try await openNextRecommendation(recommendationGallerySnapshot)
                 return
             }
             automationPhase = .seekSuggestions
@@ -2135,7 +2156,10 @@ final class InspectorViewModel: ObservableObject {
             gender: profileHeaderParser.bestAge(in: result.text).map {
                 genderBadgeClassifier.classify(image: cgImage, ageMatch: $0).hint
             },
-            mbti: mbtiParser.matches(in: result.text).first?.type,
+            // Personal Info tiles can be very small in the mirrored window.
+            // Keep exact four-letter matching, but accept moderately lower
+            // Vision confidence so a genuine ENFP/INFJ tile is not discarded.
+            mbti: mbtiParser.matches(in: result.text, minimumConfidence: 0.55).first?.type,
             location: temporalLocation?.location,
             metadata: profileMetadata
         )

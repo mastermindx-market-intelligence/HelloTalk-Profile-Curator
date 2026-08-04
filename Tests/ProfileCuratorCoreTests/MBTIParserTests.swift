@@ -38,6 +38,17 @@ final class MBTIParserTests: XCTestCase {
         XCTAssertTrue(MBTIParser().matches(in: observations).isEmpty)
     }
 
+    func testExplicitRuntimeThresholdAcceptsExactTinyTile() {
+        let observations = [
+            OCRObservation(text: "ENFP", confidence: 0.60, bounds: bounds)
+        ]
+
+        XCTAssertEqual(
+            MBTIParser().firstTarget(in: observations, minimumConfidence: 0.55)?.type,
+            .enfp
+        )
+    }
+
     func testRecognizesNonTargetWithoutRoutingItToAGroup() {
         let observations = [
             OCRObservation(text: "ENTJ", confidence: 0.99, bounds: bounds)
