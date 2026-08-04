@@ -61,7 +61,7 @@ Remaining supervised gate: validate calibrated PFP open/crop/close actions befor
 - [x] Offline queue, timeout, bounded retry
 - [x] Evidence/confidence persistence schema and dashboard score display
 
-Live endpoint setup pending: the fresh-install default is now `qwen3.5:9b`; inspect the Windows/WSL Ollama service and expose it only to the Mac over Tailscale.
+Live endpoint verified: Windows Ollama serves `qwen3.5:9b` from localhost through a private Tailscale TCP Serve route. The Mac configuration points to that tailnet-only endpoint, and both model discovery and structured multimodal inference have passed.
 
 ## Phase 6 — secondary group and ranking
 

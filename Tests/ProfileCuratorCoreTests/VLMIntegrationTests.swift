@@ -3,7 +3,7 @@ import XCTest
 @testable import ProfileCuratorCore
 
 final class VLMIntegrationTests: XCTestCase {
-    func testFreshConfigurationUsesCurrentTwelveGigabyteVisionDefault() {
+    func testFreshConfigurationUsesCurrentVisionDefault() {
         XCTAssertEqual(VLMConfiguration().model, "qwen3.5:9b")
     }
 
