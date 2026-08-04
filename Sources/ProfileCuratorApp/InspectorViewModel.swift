@@ -664,6 +664,12 @@ final class InspectorViewModel: ObservableObject {
     }
 
     private func finishMediaCollection(_ snapshot: ObservationSnapshot) async throws {
+        if let username = profileAccumulator.username {
+            recommendationLedger.recordVerifiedProfileKey(username)
+        }
+        if let displayName = profileAccumulator.displayName {
+            recommendationLedger.recordCompletedDisplayName(displayName)
+        }
         finalizeCurrentProfileMedia()
         recordEvent(.transition, summary: collectionStatus)
         queueCurrentProfileAnalysis()
@@ -672,8 +678,15 @@ final class InspectorViewModel: ObservableObject {
         automationProfileCount += 1
         automationPhase = .exitMoments
         automationNoProgressCount = 0
-        let back = fallbackBackAction(rationale: "Return to the profile after finishing Moments")
-        _ = try await performClick(back, context: .momentsFeed, expecting: .contentHashChanged(previous: snapshot.fingerprint))
+        guard let observations = analysis?.text,
+              let aboutMe = profileInteractionSafety.tabAction(named: "About Me", in: observations) else {
+            throw AutomationRuntimeError.unknownState("The live About Me tab OCR anchor is unavailable; refusing to leave Moments with the profile Back button")
+        }
+        _ = try await performClick(
+            aboutMe,
+            context: .profile,
+            expecting: .contentHashChanged(previous: snapshot.fingerprint)
+        )
         automationPhase = .seekSuggestions
         automationScrollAttempts = 0
     }
@@ -714,11 +727,29 @@ final class InspectorViewModel: ObservableObject {
 
         let (target, candidate, decision) = proposal
         proposedVisibleCardTarget = target
-        let next = try await performClick(
-            target.plannedAction,
-            context: .profile,
-            expecting: .profileIdentityChanged(previousUsername: previousUsername)
-        )
+        let next: ObservationSnapshot
+        do {
+            next = try await performClick(
+                target.plannedAction,
+                context: .profile,
+                expecting: .profileIdentityChanged(previousUsername: previousUsername)
+            )
+        } catch {
+            let observedUsername = observationSnapshot?.username?.lowercased()
+            guard observedUsername == previousUsername.lowercased() else { throw error }
+            recommendationLedger.recordOpened(candidate, decision: decision)
+            recordEvent(.postcondition, summary: "recovered · skipped recommendation resolving to the completed profile")
+            let duplicateFingerprint = observationSnapshot?.fingerprint ?? snapshot.fingerprint
+            let back = fallbackBackAction(rationale: "Return from a recommendation that reopened the completed profile")
+            _ = try await performClick(
+                back,
+                context: .profile,
+                expecting: .contentHashChanged(previous: duplicateFingerprint)
+            )
+            automationPhase = .openRecommendation
+            automationScrollAttempts = 0
+            return
+        }
         recommendationLedger.recordOpened(candidate, decision: decision)
         if let username = next.username { recommendationLedger.recordVerifiedProfileKey(username) }
         prepareForNewProfile()
@@ -1882,11 +1913,8 @@ private struct ProfileObservationAccumulator {
         }
         if let value = metadata.education, value.count >= (education?.count ?? 0) { education = value }
         if let value = metadata.occupation, value.count >= (occupation?.count ?? 0) { occupation = value }
-        if displayName == nil {
-            displayName = analysis.text
-                .filter { !$0.text.hasPrefix("@") && $0.bounds.minY < 0.35 }
-                .sorted { $0.bounds.minY < $1.bounds.minY }
-                .first?.text
+        if let parsedDisplayName = ProfileDisplayNameParser().displayName(in: analysis.text) {
+            displayName = parsedDisplayName
         }
     }
 }

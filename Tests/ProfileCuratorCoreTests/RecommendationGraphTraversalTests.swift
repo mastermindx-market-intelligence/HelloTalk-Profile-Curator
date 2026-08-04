@@ -84,4 +84,12 @@ final class RecommendationGraphTraversalTests: XCTestCase {
         ledger.recordVerifiedProfileKey("@New_Profile")
         XCTAssertTrue(ledger.visitedProfileKeys.contains("@new_profile"))
     }
+
+    func testCompletedDisplayNameDeduplicatesVisibleCardFormatting() {
+        var ledger = RecommendationTraversalLedger()
+        ledger.recordCompletedDisplayName("Lu Lu")
+        let candidate = VisibleRecommendationCandidate(profileKey: "lulu", displayedAge: 20, genderHint: .unknown)
+
+        XCTAssertEqual(ledger.decision(for: candidate), .skipDuplicate)
+    }
 }

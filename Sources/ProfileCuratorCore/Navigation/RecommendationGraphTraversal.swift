@@ -83,4 +83,13 @@ public struct RecommendationTraversalLedger: Sendable {
         guard !normalized.isEmpty else { return }
         visitedProfileKeys.insert(normalized)
     }
+
+    public mutating func recordCompletedDisplayName(_ displayName: String) {
+        let normalized = displayName
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber || $0 == "_" }
+        guard !normalized.isEmpty else { return }
+        visitedProfileKeys.insert(normalized)
+    }
 }

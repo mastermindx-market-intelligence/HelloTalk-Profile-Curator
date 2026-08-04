@@ -32,4 +32,14 @@ final class ProfileHeaderParserTests: XCTestCase {
         XCTAssertTrue(matcher.contains(anchor: "AI Photo Gift", in: "Al Photo Gift · Avatar Effect"))
         XCTAssertFalse(matcher.contains(anchor: "AI Photo Gift", in: "Photo Gift"))
     }
+
+    func testDisplayNameComesFromHeaderImmediatelyAboveUsernameNotStatusTime() {
+        let observations = [
+            OCRObservation(text: "1:08", confidence: 0.99, bounds: NormalizedRect(x: 0.08, y: 0.05, width: 0.08, height: 0.03)),
+            OCRObservation(text: "lulu", confidence: 0.94, bounds: NormalizedRect(x: 0.06, y: 0.29, width: 0.10, height: 0.035)),
+            OCRObservation(text: "@com_tiana143", confidence: 0.96, bounds: NormalizedRect(x: 0.06, y: 0.335, width: 0.24, height: 0.03))
+        ]
+
+        XCTAssertEqual(ProfileDisplayNameParser().displayName(in: observations), "lulu")
+    }
 }

@@ -57,6 +57,37 @@ public struct ProfileHeaderParser: Sendable {
     }
 }
 
+public struct ProfileDisplayNameParser: Sendable {
+    public init() {}
+
+    public func displayName(in observations: [OCRObservation]) -> String? {
+        guard let username = observations
+            .filter({ $0.confidence >= 0.55 && $0.text.trimmingCharacters(in: .whitespaces).hasPrefix("@") })
+            .min(by: { $0.bounds.minY < $1.bounds.minY }) else {
+            return nil
+        }
+
+        return observations.compactMap { observation -> (String, Double, Double)? in
+            let value = observation.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard observation.confidence >= 0.55,
+                  !value.isEmpty,
+                  !value.hasPrefix("@"),
+                  observation.bounds.maxY <= username.bounds.minY + 0.012 else { return nil }
+            let verticalGap = username.bounds.minY - observation.bounds.maxY
+            let horizontalGap = abs(username.bounds.minX - observation.bounds.minX)
+            guard verticalGap >= -0.012, verticalGap <= 0.09, horizontalGap <= 0.16,
+                  value.range(of: #"^\d{1,2}:\d{2}$"#, options: .regularExpression) == nil,
+                  value.range(of: #"^[\d\s%]+$"#, options: .regularExpression) == nil else { return nil }
+            return (value, verticalGap, horizontalGap)
+        }
+        .sorted {
+            if $0.1 != $1.1 { return $0.1 < $1.1 }
+            return $0.2 < $1.2
+        }
+        .first?.0
+    }
+}
+
 public struct OCRAnchorMatcher: Sendable {
     public init() {}
 
