@@ -43,8 +43,17 @@ public struct ProfileRecord: Codable, FetchableRecord, PersistableRecord, Identi
     public var locationRaw: String?
     public var cityNormalized: String?
     public var provinceNormalized: String?
+    public var countryNormalized: String?
     public var locationTier: Int?
     public var locationScore: Int?
+    public var bio: String?
+    public var hobbiesJSON: String
+    public var education: String?
+    public var occupation: String?
+    public var hobbyScore: Double?
+    public var educationScore: Double?
+    public var occupationScore: Double?
+    public var profileSignalsScore: Double?
     public var faceScore: Double?
     public var lifestyleScore: Double?
     public var profileCompletenessScore: Double
@@ -61,6 +70,10 @@ public struct ProfileRecord: Codable, FetchableRecord, PersistableRecord, Identi
     public var typedStatus: ProfileStatus { ProfileStatus(rawValue: status) ?? .new }
     public var typedMBTI: MBTIType? { mbti.flatMap(MBTIType.init(rawValue:)) }
     public var typedGroup: MBTIGroup? { mbtiGroup.flatMap(MBTIGroup.init(rawValue:)) }
+    public var hobbies: [String] {
+        guard let data = hobbiesJSON.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([String].self, from: data)) ?? []
+    }
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -72,8 +85,16 @@ public struct ProfileRecord: Codable, FetchableRecord, PersistableRecord, Identi
         case locationRaw = "location_raw"
         case cityNormalized = "city_normalized"
         case provinceNormalized = "province_normalized"
+        case countryNormalized = "country_normalized"
         case locationTier = "location_tier"
         case locationScore = "location_score"
+        case bio
+        case hobbiesJSON = "hobbies_json"
+        case education, occupation
+        case hobbyScore = "hobby_score"
+        case educationScore = "education_score"
+        case occupationScore = "occupation_score"
+        case profileSignalsScore = "profile_signals_score"
         case faceScore = "face_score"
         case lifestyleScore = "lifestyle_score"
         case profileCompletenessScore = "profile_completeness_score"
@@ -96,6 +117,10 @@ public struct ProfileDraft: Hashable, Sendable {
     public var gender: GenderBadgeHint
     public var mbti: MBTIType?
     public var location: NormalizedLocation?
+    public var bio: String?
+    public var hobbies: [String]
+    public var education: String?
+    public var occupation: String?
     public var profileCompletenessScore: Double
     public var status: ProfileStatus
 
@@ -106,6 +131,10 @@ public struct ProfileDraft: Hashable, Sendable {
         gender: GenderBadgeHint = .unknown,
         mbti: MBTIType? = nil,
         location: NormalizedLocation? = nil,
+        bio: String? = nil,
+        hobbies: [String] = [],
+        education: String? = nil,
+        occupation: String? = nil,
         profileCompletenessScore: Double = 0,
         status: ProfileStatus = .new
     ) {
@@ -115,6 +144,10 @@ public struct ProfileDraft: Hashable, Sendable {
         self.gender = gender
         self.mbti = mbti
         self.location = location
+        self.bio = bio
+        self.hobbies = hobbies
+        self.education = education
+        self.occupation = occupation
         self.profileCompletenessScore = min(100, max(0, profileCompletenessScore))
         self.status = status
     }
@@ -191,6 +224,7 @@ public enum ProfileSort: String, CaseIterable, Sendable {
     case overallScore
     case faceScore
     case lifestyleScore
+    case profileSignalsScore
     case locationScore
     case confidenceAdjustedScore
     case newest
@@ -202,6 +236,7 @@ public enum ProfileSort: String, CaseIterable, Sendable {
         case .overallScore: "overall_score DESC, last_seen_at DESC"
         case .faceScore: "face_score DESC, last_seen_at DESC"
         case .lifestyleScore: "lifestyle_score DESC, last_seen_at DESC"
+        case .profileSignalsScore: "profile_signals_score DESC, last_seen_at DESC"
         case .locationScore: "location_score DESC, last_seen_at DESC"
         case .confidenceAdjustedScore:
             "(COALESCE(overall_score, 0) * (0.75 + 0.25 * analysis_confidence)) DESC, last_seen_at DESC"
@@ -318,6 +353,15 @@ public final class ProfileRepository: @unchecked Sendable {
                 sql: "SELECT * FROM profiles WHERE username_normalized = ?",
                 arguments: [draft.normalizedUsername]
             )
+            let mergedHobbies = Self.mergedHobbies(existing?.hobbies ?? [], draft.hobbies)
+            let mergedBio = Self.longerText(existing?.bio, draft.bio)
+            let mergedEducation = Self.longerText(existing?.education, draft.education)
+            let mergedOccupation = Self.longerText(existing?.occupation, draft.occupation)
+            let signalScores = ProfileSignalScorer().score(
+                hobbies: mergedHobbies,
+                education: mergedEducation,
+                occupation: mergedOccupation
+            )
             let record = ProfileRecord(
                 id: existing?.id ?? UUID().uuidString,
                 usernameRaw: draft.usernameRaw,
@@ -330,8 +374,17 @@ public final class ProfileRepository: @unchecked Sendable {
                 locationRaw: draft.location?.rawText ?? existing?.locationRaw,
                 cityNormalized: draft.location?.city ?? existing?.cityNormalized,
                 provinceNormalized: draft.location?.province ?? existing?.provinceNormalized,
+                countryNormalized: draft.location?.country ?? existing?.countryNormalized,
                 locationTier: draft.location?.tier ?? existing?.locationTier,
                 locationScore: draft.location?.score ?? existing?.locationScore,
+                bio: mergedBio,
+                hobbiesJSON: Self.encodeHobbies(mergedHobbies),
+                education: mergedEducation,
+                occupation: mergedOccupation,
+                hobbyScore: signalScores.hobbies,
+                educationScore: signalScores.education,
+                occupationScore: signalScores.occupation,
+                profileSignalsScore: signalScores.combined,
                 faceScore: existing?.faceScore,
                 lifestyleScore: existing?.lifestyleScore,
                 profileCompletenessScore: max(draft.profileCompletenessScore, existing?.profileCompletenessScore ?? 0),
@@ -348,6 +401,26 @@ public final class ProfileRepository: @unchecked Sendable {
             if existing == nil { try record.insert(database) } else { try record.update(database) }
             return record
         }
+    }
+
+    private static func mergedHobbies(_ existing: [String], _ incoming: [String]) -> [String] {
+        var seen = Set<String>()
+        return (existing + incoming).filter {
+            seen.insert($0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current).lowercased()).inserted
+        }
+    }
+
+    private static func encodeHobbies(_ hobbies: [String]) -> String {
+        guard let data = try? JSONEncoder().encode(hobbies) else { return "[]" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private static func longerText(_ existing: String?, _ incoming: String?) -> String? {
+        let oldValue = existing?.nilIfBlank
+        let newValue = incoming?.nilIfBlank
+        guard let newValue else { return oldValue }
+        guard let oldValue else { return newValue }
+        return newValue.count >= oldValue.count ? newValue : oldValue
     }
 
     public func profile(id: String) throws -> ProfileRecord? {
@@ -574,18 +647,21 @@ public final class ProfileRepository: @unchecked Sendable {
         var clauses: [String] = []
         var arguments = StatementArguments()
         if !query.search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            clauses.append("(username_normalized LIKE ? OR display_name LIKE ?)")
+            clauses.append("(username_normalized LIKE ? OR display_name LIKE ? OR bio LIKE ? OR hobbies_json LIKE ? OR education LIKE ? OR occupation LIKE ?)")
             let value = "%\(query.search.lowercased())%"
-            arguments += [value, value]
+            arguments += [value, value, value, value, value, value]
         }
         Self.appendSetFilter(column: "mbti", values: query.mbti.map(\.rawValue), clauses: &clauses, arguments: &arguments)
         Self.appendSetFilter(column: "mbti_group", values: query.groups.map(\.rawValue), clauses: &clauses, arguments: &arguments)
         Self.appendSetFilter(column: "status", values: query.statuses.map(\.rawValue), clauses: &clauses, arguments: &arguments)
         if let minimumAge = query.minimumAge { clauses.append("age >= ?"); arguments += [minimumAge] }
         if let maximumAge = query.maximumAge { clauses.append("age <= ?"); arguments += [maximumAge] }
-        if let city = query.city, !city.isEmpty { clauses.append("city_normalized = ?"); arguments += [city] }
+        if let city = query.city, !city.isEmpty {
+            clauses.append("(city_normalized = ? COLLATE NOCASE OR country_normalized = ? COLLATE NOCASE)")
+            arguments += [city, city]
+        }
         if query.secondaryHighPriorityOnly {
-            clauses.append("mbti_group = 'secondary' AND (face_score >= 82 OR lifestyle_score >= 82 OR overall_score >= 76)")
+            clauses.append("mbti_group = 'secondary' AND (face_score >= 82 OR lifestyle_score >= 82 OR profile_signals_score >= 82 OR overall_score >= 76 OR location_score >= 100)")
         }
         if let value = query.minimumFaceScore { clauses.append("face_score >= ?"); arguments += [value] }
         if let value = query.minimumLifestyleScore { clauses.append("lifestyle_score >= ?"); arguments += [value] }
@@ -685,7 +761,27 @@ public final class ProfileRepository: @unchecked Sendable {
                 table.column("updated_at", .datetime).notNull()
             }
         }
+        migrator.registerMigration("v3-profile-metadata-signals") { database in
+            try database.alter(table: "profiles") { table in
+                table.add(column: "country_normalized", .text)
+                table.add(column: "bio", .text)
+                table.add(column: "hobbies_json", .text).notNull().defaults(to: "[]")
+                table.add(column: "education", .text)
+                table.add(column: "occupation", .text)
+                table.add(column: "hobby_score", .double)
+                table.add(column: "education_score", .double)
+                table.add(column: "occupation_score", .double)
+                table.add(column: "profile_signals_score", .double)
+            }
+        }
         return migrator
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        let value = trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
     }
 }
 

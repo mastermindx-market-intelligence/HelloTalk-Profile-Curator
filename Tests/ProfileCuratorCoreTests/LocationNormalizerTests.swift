@@ -19,6 +19,15 @@ final class LocationNormalizerTests: XCTestCase {
         XCTAssertEqual(result.score, 85)
     }
 
+    func testPreferredForeignCountriesShareTopLocationScore() {
+        for value in ["United States", "Australia", "UK", "Canada", "美国"] {
+            let result = LocationNormalizer().normalize("Country: \(value)")
+            XCTAssertEqual(result.tier, 1, value)
+            XCTAssertEqual(result.score, 100, value)
+            XCTAssertNotNil(result.country, value)
+        }
+    }
+
     func testProvinceOnlyUsesTierTwo() {
         let result = LocationNormalizer().normalize("广东省")
 

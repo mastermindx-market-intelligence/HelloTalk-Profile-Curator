@@ -185,7 +185,10 @@ public actor AnalysisQueueProcessor {
             face = min(100, max(0, value.visualAppealScore - value.photoQualityPenalty))
             confidence = combinedConfidence(existing: confidence, new: value.confidence)
         case .lifestyle(let value):
-            lifestyle = min(100, max(0, value.lifestyleAffluenceSignal))
+            lifestyle = ProfileSignalScorer().enrichLifestyle(
+                visualScore: value.lifestyleAffluenceSignal,
+                profileSignalScore: profile.profileSignalsScore
+            )
             confidence = combinedConfidence(existing: confidence, new: value.confidence)
         }
 

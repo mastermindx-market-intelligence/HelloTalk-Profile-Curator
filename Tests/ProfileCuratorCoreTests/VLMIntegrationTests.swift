@@ -117,7 +117,15 @@ final class VLMIntegrationTests: XCTestCase {
 
     func testSuccessfulRunPersistsOrderedImageEvidenceLinks() async throws {
         let context = try temporaryRepository()
-        let profile = try context.repository.upsert(ProfileDraft(usernameRaw: "@evidence", age: 19, gender: .female, mbti: .infj))
+        let profile = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@evidence",
+            age: 19,
+            gender: .female,
+            mbti: .infj,
+            hobbies: ["Psychology"],
+            education: "International Student",
+            occupation: "Student"
+        ))
         let first = context.root.appendingPathComponent("first.png")
         let second = context.root.appendingPathComponent("second.png")
         try Data("first".utf8).write(to: first)
@@ -144,7 +152,9 @@ final class VLMIntegrationTests: XCTestCase {
         XCTAssertEqual(run.requestTrace?.images.map(\.filePath), [first.path, second.path])
         XCTAssertEqual(run.lifestyleEvidence(sourceImageID: "image-1").first?.category, "travel")
         XCTAssertEqual(run.lifestyleEvidence(sourceImageID: "image-2").first?.category, "travel")
-        XCTAssertEqual(try XCTUnwrap(context.repository.profile(id: profile.id)).analysisConfidence, 0.8, accuracy: 0.001)
+        let updated = try XCTUnwrap(context.repository.profile(id: profile.id))
+        XCTAssertEqual(updated.analysisConfidence, 0.8, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(updated.lifestyleScore), 73.65, accuracy: 0.001)
         let prompts = await client.prompts
         XCTAssertEqual(prompts.count, 2)
         XCTAssertTrue(prompts[0].contains("must be image-1"))

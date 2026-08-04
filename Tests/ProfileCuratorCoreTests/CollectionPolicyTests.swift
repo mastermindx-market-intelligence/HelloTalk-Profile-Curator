@@ -58,5 +58,11 @@ final class CollectionPolicyTests: XCTestCase {
 
         let secondary = ScoringEngine().score(group: .secondary, components: components)
         XCTAssertTrue(secondary.secondaryHighPriority)
+
+        let locationOnly = ScoringEngine().score(
+            group: .secondary,
+            components: ScoreComponents(face: 10, lifestyle: 10, location: 100, completeness: 0, confidence: 0.5)
+        )
+        XCTAssertTrue(locationOnly.secondaryHighPriority)
     }
 }

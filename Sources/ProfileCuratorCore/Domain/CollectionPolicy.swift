@@ -222,19 +222,22 @@ public struct ScoringEngine: Sendable {
     public var secondaryFaceThreshold: Double
     public var secondaryLifestyleThreshold: Double
     public var secondaryOverallThreshold: Double
+    public var secondaryLocationThreshold: Double
 
     public init(
         primaryWeights: ScoreWeights = .primary,
         secondaryWeights: ScoreWeights = .secondary,
         secondaryFaceThreshold: Double = 82,
         secondaryLifestyleThreshold: Double = 82,
-        secondaryOverallThreshold: Double = 76
+        secondaryOverallThreshold: Double = 76,
+        secondaryLocationThreshold: Double = 100
     ) {
         self.primaryWeights = primaryWeights
         self.secondaryWeights = secondaryWeights
         self.secondaryFaceThreshold = secondaryFaceThreshold
         self.secondaryLifestyleThreshold = secondaryLifestyleThreshold
         self.secondaryOverallThreshold = secondaryOverallThreshold
+        self.secondaryLocationThreshold = secondaryLocationThreshold
     }
 
     public func score(group: MBTIGroup, components: ScoreComponents) -> ProfileScore {
@@ -248,6 +251,7 @@ public struct ScoringEngine: Sendable {
             components.face >= secondaryFaceThreshold
                 || components.lifestyle >= secondaryLifestyleThreshold
                 || overall >= secondaryOverallThreshold
+                || components.location >= secondaryLocationThreshold
         )
         return ProfileScore(overall: overall, confidenceAdjusted: adjusted, secondaryHighPriority: highPriority)
     }

@@ -48,6 +48,45 @@ final class ProfileRepositoryTests: XCTestCase {
         XCTAssertTrue(page.records.allSatisfy { $0.typedGroup == .primary })
     }
 
+    func testProfileMetadataPersistsMergesAndBecomesSearchable() throws {
+        let context = try temporaryRepository()
+        let first = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@signals",
+            age: 20,
+            gender: .female,
+            mbti: .entp,
+            location: NormalizedLocation(
+                rawText: "Canada",
+                city: nil,
+                province: nil,
+                country: "Canada",
+                tier: 1,
+                score: 100,
+                confidence: 0.95
+            ),
+            bio: "I enjoy learning languages.",
+            hobbies: ["Psychology", "Tennis"],
+            education: "International Student",
+            occupation: "Student"
+        ))
+        let merged = try context.repository.upsert(ProfileDraft(
+            usernameRaw: "@signals",
+            bio: "Short",
+            hobbies: ["tennis", "Traveling"]
+        ))
+
+        XCTAssertEqual(merged.id, first.id)
+        XCTAssertEqual(merged.countryNormalized, "Canada")
+        XCTAssertEqual(merged.bio, "I enjoy learning languages.")
+        XCTAssertEqual(merged.hobbies, ["Psychology", "Tennis", "Traveling"])
+        XCTAssertEqual(merged.education, "International Student")
+        XCTAssertEqual(merged.occupation, "Student")
+        XCTAssertGreaterThan(try XCTUnwrap(merged.profileSignalsScore), 85)
+        XCTAssertEqual(try context.repository.page(ProfileQuery(search: "psychology")).totalCount, 1)
+        XCTAssertEqual(try context.repository.page(ProfileQuery(city: "Canada")).totalCount, 1)
+        XCTAssertEqual(try context.repository.page(ProfileQuery(secondaryHighPriorityOnly: true)).totalCount, 1)
+    }
+
     func testBalancedFinalizationCanReplaceFirstTenRetentionFlags() throws {
         let context = try temporaryRepository()
         let profile = try context.repository.upsert(ProfileDraft(usernameRaw: "@retention", age: 19, gender: .female, mbti: .infj))

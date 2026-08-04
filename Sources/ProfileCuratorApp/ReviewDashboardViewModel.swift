@@ -243,7 +243,7 @@ final class ReviewDashboardViewModel: ObservableObject {
                 encoder.dateEncodingStrategy = .iso8601
                 try encoder.encode(profiles).write(to: url, options: .atomic)
             case .csv:
-                let header = "username,display_name,age,mbti,group,city,face_score,lifestyle_score,overall_score,confidence,status,first_seen,last_seen\n"
+                let header = "username,display_name,age,mbti,group,city,country,bio,hobbies,education,occupation,hobby_score,education_score,occupation_score,profile_signals_score,face_score,lifestyle_score,overall_score,confidence,status,first_seen,last_seen\n"
                 let rows = profiles.map(Self.csvRow).joined(separator: "\n")
                 try Data((header + rows).utf8).write(to: url, options: .atomic)
             }
@@ -304,6 +304,10 @@ final class ReviewDashboardViewModel: ObservableObject {
         let face = profile.faceScore.map { String($0) } ?? ""
         let lifestyle = profile.lifestyleScore.map { String($0) } ?? ""
         let overall = profile.overallScore.map { String($0) } ?? ""
+        let hobbyScore = profile.hobbyScore.map { String($0) } ?? ""
+        let educationScore = profile.educationScore.map { String($0) } ?? ""
+        let occupationScore = profile.occupationScore.map { String($0) } ?? ""
+        let profileSignalsScore = profile.profileSignalsScore.map { String($0) } ?? ""
         let fields: [String] = [
             profile.usernameNormalized,
             profile.displayName ?? "",
@@ -311,6 +315,15 @@ final class ReviewDashboardViewModel: ObservableObject {
             profile.mbti ?? "",
             profile.mbtiGroup ?? "",
             profile.cityNormalized ?? "",
+            profile.countryNormalized ?? "",
+            profile.bio ?? "",
+            profile.hobbies.joined(separator: " | "),
+            profile.education ?? "",
+            profile.occupation ?? "",
+            hobbyScore,
+            educationScore,
+            occupationScore,
+            profileSignalsScore,
             face,
             lifestyle,
             overall,

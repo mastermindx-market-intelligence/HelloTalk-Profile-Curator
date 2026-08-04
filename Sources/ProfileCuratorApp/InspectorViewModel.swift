@@ -94,6 +94,7 @@ final class InspectorViewModel: ObservableObject {
     private let mbtiParser = MBTIParser()
     private let locationNormalizer = LocationNormalizer()
     private let profileHeaderParser = ProfileHeaderParser()
+    private let profileMetadataParser = ProfileMetadataParser()
     private let recommendationAgeParser = RecommendationAgeParser()
     private let genderBadgeClassifier = GenderBadgeClassifier()
     private let rotatingLocationBadgeParser = RotatingLocationBadgeParser()
@@ -1233,6 +1234,10 @@ final class InspectorViewModel: ObservableObject {
                 gender: profileAccumulator.gender,
                 mbti: profileAccumulator.mbti,
                 location: profileAccumulator.location,
+                bio: profileAccumulator.bio,
+                hobbies: profileAccumulator.hobbies,
+                education: profileAccumulator.education,
+                occupation: profileAccumulator.occupation,
                 profileCompletenessScore: profileAccumulator.completenessScore,
                 status: .new
             ))
@@ -1545,6 +1550,12 @@ final class InspectorViewModel: ObservableObject {
         temporalLocation = rotatingLocationBadgeParser.resolve(frames: [result.text])
         screenClassification = snapshot.screen
         observationSnapshot = snapshot
+        let profileMetadata: ParsedProfileMetadata
+        if [.profileTop, .profilePersonalInfo].contains(snapshot.screen.kind) {
+            profileMetadata = profileMetadataParser.parse(result.text)
+        } else {
+            profileMetadata = ParsedProfileMetadata()
+        }
         profileAccumulator.observe(
             snapshot: snapshot,
             analysis: result,
@@ -1553,7 +1564,8 @@ final class InspectorViewModel: ObservableObject {
                 genderBadgeClassifier.classify(image: cgImage, ageMatch: $0).hint
             },
             mbti: mbtiParser.firstTarget(in: result.text)?.type,
-            location: locationNormalizer.normalize(result.text.map(\.text).joined(separator: " · "))
+            location: locationNormalizer.normalize(result.text.map(\.text).joined(separator: " · ")),
+            metadata: profileMetadata
         )
 
         let automationCanTraverseUnknown = automationRunState == .running && [
@@ -1704,13 +1716,28 @@ private struct ProfileObservationAccumulator {
     var gender: GenderBadgeHint = .unknown
     var mbti: MBTIType?
     var location: NormalizedLocation?
+    var bio: String?
+    var hobbies: [String] = []
+    var education: String?
+    var occupation: String?
 
     var evidence: OpenedProfileEvidence {
         OpenedProfileEvidence(username: username, age: age, gender: gender, mbti: mbti)
     }
 
     var completenessScore: Double {
-        let signals: [Bool] = [username != nil, displayName != nil, age != nil, gender != .unknown, mbti != nil, location?.city != nil]
+        let signals: [Bool] = [
+            username != nil,
+            displayName != nil,
+            age != nil,
+            gender != .unknown,
+            mbti != nil,
+            location?.city != nil || location?.country != nil,
+            bio != nil,
+            !hobbies.isEmpty,
+            education != nil,
+            occupation != nil
+        ]
         return Double(signals.filter { $0 }.count) / Double(signals.count) * 100
     }
 
@@ -1720,7 +1747,8 @@ private struct ProfileObservationAccumulator {
         age: ProfileAgeMatch?,
         gender: GenderBadgeHint?,
         mbti: MBTIType?,
-        location: NormalizedLocation
+        location: NormalizedLocation,
+        metadata: ParsedProfileMetadata
     ) {
         if let observed = snapshot.username, observed != username {
             self = ProfileObservationAccumulator(username: observed)
@@ -1729,7 +1757,24 @@ private struct ProfileObservationAccumulator {
         if let age { self.age = age.age }
         if let gender, gender != .unknown { self.gender = gender }
         if let mbti { self.mbti = mbti }
-        if location.city != nil || location.province != nil { self.location = location }
+        if location.city != nil || location.province != nil || location.country != nil { self.location = location }
+        if let incomingBio = metadata.bio?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !incomingBio.isEmpty,
+           incomingBio.count >= (bio?.count ?? 0) {
+            bio = incomingBio
+        }
+        if !metadata.hobbies.isEmpty {
+            var seen = Set(hobbies.map {
+                $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current).lowercased()
+            })
+            hobbies += metadata.hobbies.filter {
+                seen.insert(
+                    $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current).lowercased()
+                ).inserted
+            }
+        }
+        if let value = metadata.education, value.count >= (education?.count ?? 0) { education = value }
+        if let value = metadata.occupation, value.count >= (occupation?.count ?? 0) { occupation = value }
         if displayName == nil {
             displayName = analysis.text
                 .filter { !$0.text.hasPrefix("@") && $0.bounds.minY < 0.35 }

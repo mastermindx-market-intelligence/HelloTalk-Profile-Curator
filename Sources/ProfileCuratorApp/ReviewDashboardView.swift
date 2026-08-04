@@ -44,7 +44,7 @@ struct ReviewDashboardView: View {
     private var controls: some View {
         VStack(spacing: 10) {
             HStack {
-                TextField("Search username or name", text: $model.search)
+                TextField("Search name, bio, hobby, school, or job", text: $model.search)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { model.refresh(resetPage: true) }
                 Picker("Section", selection: $model.section) {
@@ -63,7 +63,7 @@ struct ReviewDashboardView: View {
                 HStack {
                     TextField("Min age", text: $model.minimumAgeText).frame(width: 80)
                     TextField("Max age", text: $model.maximumAgeText).frame(width: 80)
-                    TextField("City", text: $model.city).frame(width: 140)
+                    TextField("City or country", text: $model.city).frame(width: 140)
                     TextField("Min face", text: $model.minimumFaceScoreText).frame(width: 90)
                     TextField("Min lifestyle", text: $model.minimumLifestyleScoreText).frame(width: 100)
                     TextField("Min overall", text: $model.minimumOverallScoreText).frame(width: 95)
@@ -106,6 +106,7 @@ struct ReviewDashboardView: View {
         case .overallScore: "Overall score"
         case .faceScore: "Face score"
         case .lifestyleScore: "Lifestyle signal"
+        case .profileSignalsScore: "Profile signals"
         case .locationScore: "Location score"
         case .confidenceAdjustedScore: "Confidence-adjusted"
         case .newest: "Newest"
@@ -150,12 +151,19 @@ private struct ProfileGridCard: View {
             HStack {
                 signal(item.profile.age.map(String.init) ?? "Age ?")
                 signal(item.profile.mbti ?? "MBTI ?")
-                signal(item.profile.cityNormalized ?? "City ?")
+                signal(item.profile.cityNormalized ?? item.profile.countryNormalized ?? "Location ?")
             }
             HStack {
                 score("Face", item.profile.faceScore)
                 score("Life", item.profile.lifestyleScore)
+                score("Profile", item.profile.profileSignalsScore)
                 score("Overall", item.profile.overallScore)
+            }
+            if !item.profile.hobbies.isEmpty {
+                Text(item.profile.hobbies.prefix(3).joined(separator: " · "))
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             Text("\(item.mediaCount) retained · \(item.facePhotoCount) face · \(item.momentPhotoCount) Moments")
                 .font(.caption2).foregroundStyle(.secondary)
@@ -211,7 +219,13 @@ private struct ProfileDetailView: View {
                             DetailFieldRow(label: "Gender", value: humanized(item.profile.gender ?? "Unverified"))
                             DetailFieldRow(label: "MBTI", value: item.profile.mbti ?? "Missing")
                             DetailFieldRow(label: "Group", value: humanized(item.profile.mbtiGroup ?? "None"))
-                            DetailFieldRow(label: "Location", value: item.profile.cityNormalized ?? item.profile.provinceNormalized ?? "Unknown")
+                            DetailFieldRow(
+                                label: "Location",
+                                value: item.profile.cityNormalized
+                                    ?? item.profile.provinceNormalized
+                                    ?? item.profile.countryNormalized
+                                    ?? "Unknown"
+                            )
                             DetailFieldRow(label: "Location tier", value: item.profile.locationTier.map(String.init) ?? "—")
                             DetailFieldRow(label: "First seen", value: item.profile.firstSeenAt.formatted(date: .abbreviated, time: .shortened))
                             DetailFieldRow(label: "Last seen", value: item.profile.lastSeenAt.formatted(date: .abbreviated, time: .shortened))
@@ -221,12 +235,66 @@ private struct ProfileDetailView: View {
                     DetailSection(title: "Score breakdown", systemImage: "chart.bar.fill") {
                         VStack(alignment: .leading, spacing: 12) {
                             ScoreMetricRow(label: "Face presentation", value: item.profile.faceScore)
-                            ScoreMetricRow(label: "Lifestyle signal", value: item.profile.lifestyleScore)
+                            ScoreMetricRow(label: "Lifestyle + profile signal", value: item.profile.lifestyleScore)
+                            ScoreMetricRow(label: "Profile signals", value: item.profile.profileSignalsScore)
                             ScoreMetricRow(label: "Location", value: item.profile.locationScore.map(Double.init))
                             ScoreMetricRow(label: "Profile completeness", value: item.profile.profileCompletenessScore)
                             ScoreMetricRow(label: "Overall", value: item.profile.overallScore, emphasized: true)
                             ScoreMetricRow(label: "Analysis confidence", value: item.profile.analysisConfidence * 100)
                         }.frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if item.profile.bio != nil
+                        || !item.profile.hobbies.isEmpty
+                        || item.profile.education != nil
+                        || item.profile.occupation != nil {
+                        DetailSection(title: "Profile signals", systemImage: "person.crop.circle.badge.checkmark") {
+                            VStack(alignment: .leading, spacing: 12) {
+                                if let bio = item.profile.bio {
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        Text("Bio (OCR)")
+                                            .font(.caption.bold())
+                                            .foregroundStyle(.secondary)
+                                        Text(bio)
+                                            .font(.callout)
+                                            .textSelection(.enabled)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                                if !item.profile.hobbies.isEmpty {
+                                    VStack(alignment: .leading, spacing: 7) {
+                                        HStack {
+                                            Text("Hobbies")
+                                                .font(.caption.bold())
+                                                .foregroundStyle(.secondary)
+                                            Spacer()
+                                            scoreValue(item.profile.hobbyScore)
+                                        }
+                                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 82), alignment: .leading)], alignment: .leading, spacing: 6) {
+                                            ForEach(item.profile.hobbies, id: \.self) { hobby in
+                                                Text(hobby)
+                                                    .font(.caption.weight(.medium))
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 5)
+                                                    .background(Color.accentColor.opacity(0.11), in: Capsule())
+                                            }
+                                        }
+                                    }
+                                }
+                                if let education = item.profile.education {
+                                    DetailFieldRow(label: "Education", value: education)
+                                    ScoreMetricRow(label: "Education signal", value: item.profile.educationScore)
+                                }
+                                if let occupation = item.profile.occupation {
+                                    DetailFieldRow(label: "Occupation", value: occupation)
+                                    ScoreMetricRow(label: "Occupation signal", value: item.profile.occupationScore)
+                                }
+                                Text("Lifestyle uses 70% visible Qwen evidence and 30% explicit profile signals when both are available. Bio is displayed only and never scored.")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                     if !model.selectedMedia.isEmpty {
                         DetailSection(title: "Retained media", systemImage: "photo.on.rectangle.angled") {
@@ -316,6 +384,12 @@ private struct ProfileDetailView: View {
         case .faceCrop: "Face crop"
         case .diagnostic: "Diagnostic capture"
         }
+    }
+
+    private func scoreValue(_ value: Double?) -> some View {
+        Text(value.map { String(format: "%.0f", $0) } ?? "—")
+            .font(.caption.bold().monospacedDigit())
+            .foregroundStyle(value.map(scoreColor) ?? .secondary)
     }
 }
 

@@ -57,6 +57,13 @@ public struct LocationNormalizer: Sendable {
         Entry(aliases: ["shenyang", "沈阳", "瀋陽"], city: "Shenyang", province: "Liaoning", tier: 5, score: 30)
     ]
 
+    private static let preferredCountries: [(name: String, pattern: String, ideographs: [String])] = [
+        ("United States", #"\b(united states|usa|u\.s\.a\.?|america)\b"#, ["美国", "美國"]),
+        ("Australia", #"\b(australia|australian)\b"#, ["澳大利亚", "澳大利亞", "澳洲"]),
+        ("United Kingdom", #"\b(united kingdom|uk|u\.k\.?|britain|great britain|england)\b"#, ["英国", "英國"]),
+        ("Canada", #"\b(canada|canadian)\b"#, ["加拿大"])
+    ]
+
     public init() {}
 
     public func normalize(_ rawText: String) -> NormalizedLocation {
@@ -72,6 +79,21 @@ public struct LocationNormalizer: Sendable {
                 country: "China",
                 tier: entry.tier,
                 score: entry.score,
+                confidence: 0.95
+            )
+        }
+
+        if let country = Self.preferredCountries.first(where: { entry in
+            folded.range(of: entry.pattern, options: .regularExpression) != nil
+                || entry.ideographs.contains(where: rawText.contains)
+        }) {
+            return NormalizedLocation(
+                rawText: rawText,
+                city: nil,
+                province: nil,
+                country: country.name,
+                tier: 1,
+                score: 100,
                 confidence: 0.95
             )
         }
