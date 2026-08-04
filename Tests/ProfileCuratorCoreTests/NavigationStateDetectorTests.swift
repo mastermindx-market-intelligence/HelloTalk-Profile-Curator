@@ -28,6 +28,64 @@ final class NavigationStateDetectorTests: XCTestCase {
         XCTAssertEqual(result.confidence, 0)
     }
 
+    func testLivePhotoBadgeInViewerHeaderIdentifiesMomentViewerWithHiddenChrome() {
+        let analysis = FixtureAnalysis(
+            imageWidth: 418,
+            imageHeight: 920,
+            text: [
+                OCRObservation(
+                    text: "LIVE",
+                    confidence: 0.95,
+                    bounds: NormalizedRect(x: 0.115, y: 0.174, width: 0.077, height: 0.013)
+                )
+            ],
+            faces: []
+        )
+
+        let result = NavigationStateDetector().classify(analysis)
+
+        XCTAssertEqual(result.kind, .momentViewer)
+        XCTAssertEqual(result.navigationState, .inspectMomentViewer)
+        XCTAssertGreaterThanOrEqual(result.confidence, 0.85)
+    }
+
+    func testLiveBadgeOutsideViewerHeaderDoesNotCreateFalsePositive() {
+        let analysis = FixtureAnalysis(
+            imageWidth: 418,
+            imageHeight: 920,
+            text: [
+                OCRObservation(
+                    text: "LIVE",
+                    confidence: 0.95,
+                    bounds: NormalizedRect(x: 0.08, y: 0.72, width: 0.08, height: 0.02)
+                )
+            ],
+            faces: []
+        )
+
+        XCTAssertEqual(NavigationStateDetector().classify(analysis).kind, .unknown)
+    }
+
+    func testMomentDetailsGridDoesNotMimicMomentViewerThroughPostDate() {
+        let analysis = FixtureAnalysis(
+            imageWidth: 418,
+            imageHeight: 920,
+            text: [
+                OCRObservation(text: "Details", confidence: 0.95, bounds: NormalizedRect(x: 0.42, y: 0.11, width: 0.15, height: 0.03)),
+                OCRObservation(text: "19/07", confidence: 0.95, bounds: NormalizedRect(x: 0.86, y: 0.20, width: 0.08, height: 0.02)),
+                OCRObservation(text: "24 Likes", confidence: 0.95, bounds: NormalizedRect(x: 0.77, y: 0.68, width: 0.17, height: 0.02)),
+                OCRObservation(text: "Comments (3)", confidence: 0.95, bounds: NormalizedRect(x: 0.07, y: 0.84, width: 0.26, height: 0.02)),
+                OCRObservation(text: "Type a message.", confidence: 0.95, bounds: NormalizedRect(x: 0.07, y: 0.91, width: 0.35, height: 0.02))
+            ],
+            faces: []
+        )
+
+        let result = NavigationStateDetector().classify(analysis)
+
+        XCTAssertEqual(result.kind, .momentDetails)
+        XCTAssertEqual(result.navigationState, .collectMoments)
+    }
+
     func testSnapshotFingerprintIsStableAcrossObservationOrderAndIDs() {
         let first = fixture(["Personal Info", "INFJ"])
         let second = FixtureAnalysis(

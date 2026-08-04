@@ -9,6 +9,7 @@ public enum DetectedScreenKind: String, Codable, CaseIterable, Hashable, Sendabl
     case suggestedProfilesGallery
     case pfpViewer
     case momentsFeed
+    case momentDetails
     case momentViewer
     case unknown
 }
@@ -46,9 +47,16 @@ public struct NavigationStateDetector: Sendable {
         if containsMomentsFeedAnchors(in: analysis) {
             return classification(.momentsFeed, .collectMoments, 0.9, ["Moments feed tab and activity anchors"])
         }
+        if contains("Details", in: text)
+            && (contains("Type a message", in: text) || contains("Comments", in: text)) {
+            return classification(.momentDetails, .collectMoments, 0.93, ["Moment details header and comment composer"])
+        }
         if (containsGalleryCounter(in: text) || contains("LIVE", in: text))
             && (contains("Like", in: text) || contains("Comment", in: text) || contains("Moments", in: text) || contains("AI", in: text)) {
             return classification(.momentViewer, .inspectMomentViewer, 0.9, ["Moment media chrome"])
+        }
+        if containsLiveViewerBadge(in: analysis) {
+            return classification(.momentViewer, .inspectMomentViewer, 0.86, ["Live media badge in viewer header"])
         }
         if contains("Moments", in: text)
             && (contains("Posts", in: text) || contains("Album", in: text) || contains("No moments", in: text)
@@ -97,6 +105,15 @@ public struct NavigationStateDetector: Sendable {
         text.range(of: #"\b\d{1,2}\s*/\s*\d{1,2}\b"#, options: .regularExpression) != nil
     }
 
+    private func containsLiveViewerBadge(in analysis: FixtureAnalysis) -> Bool {
+        analysis.text.contains { observation in
+            contains("LIVE", in: observation.text)
+                && observation.bounds.minX <= 0.24
+                && observation.bounds.minY >= 0.13
+                && observation.bounds.minY <= 0.24
+        }
+    }
+
     private func containsMomentsFeedAnchors(in analysis: FixtureAnalysis) -> Bool {
         let hasTab = analysis.text.contains {
             contains("Moments", in: $0.text) && $0.bounds.minY >= 0.28 && $0.bounds.minY <= 0.66
@@ -118,9 +135,9 @@ public struct NavigationStateDetector: Sendable {
 struct MomentViewerVisualDetector: Sendable {
     func matches(_ image: CGImage) -> Bool {
         guard let pixels = ScreenPixelBuffer(image: image) else { return false }
-        let topDark = pixels.darkFraction(in: NormalizedRect(x: 0.06, y: 0.14, width: 0.88, height: 0.17))
-        let bottomDark = pixels.darkFraction(in: NormalizedRect(x: 0.06, y: 0.70, width: 0.88, height: 0.14))
-        let centerContent = pixels.nonDarkFraction(in: NormalizedRect(x: 0.06, y: 0.35, width: 0.88, height: 0.30))
+        let topDark = pixels.darkFraction(in: NormalizedRect(x: 0.06, y: 0.12, width: 0.88, height: 0.08))
+        let bottomDark = pixels.darkFraction(in: NormalizedRect(x: 0.06, y: 0.82, width: 0.88, height: 0.12))
+        let centerContent = pixels.nonDarkFraction(in: NormalizedRect(x: 0.06, y: 0.30, width: 0.88, height: 0.38))
         let paginationLight = pixels.neutralLightFraction(
             in: NormalizedRect(x: 0.28, y: 0.86, width: 0.44, height: 0.055)
         )

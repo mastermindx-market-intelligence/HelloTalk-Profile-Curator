@@ -184,7 +184,7 @@ final class InspectorViewModel: ObservableObject {
         switch screenClassification?.kind {
         case .connectFeed, .customSearch: .connectFeed
         case .pfpViewer: .pfpViewer
-        case .momentsFeed: .momentsFeed
+        case .momentsFeed, .momentDetails: .momentsFeed
         case .momentViewer: .momentViewer
         default: .profile
         }

@@ -122,6 +122,16 @@ final class PhotoExtractionTests: XCTestCase {
         XCTAssertEqual(NavigationStateDetector().classify(analysis, image: image).kind, .unknown)
     }
 
+    func testTallPortraitViewerWithHiddenChromeUsesVisualFallback() throws {
+        let image = try makeHiddenViewerImage(
+            includePagination: true,
+            contentRect: CGRect(x: 24, y: 205, width: 372, height: 545)
+        )
+        let analysis = FixtureAnalysis(imageWidth: image.width, imageHeight: image.height, text: [], faces: [])
+
+        XCTAssertEqual(NavigationStateDetector().classify(analysis, image: image).kind, .momentViewer)
+    }
+
     func testPrivateHiddenChromeViewerWhenFixtureIsAvailable() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -139,7 +149,10 @@ final class PhotoExtractionTests: XCTestCase {
         XCTAssertEqual(NavigationStateDetector().classify(analysis, image: image).kind, .momentViewer)
     }
 
-    private func makeHiddenViewerImage(includePagination: Bool) throws -> CGImage {
+    private func makeHiddenViewerImage(
+        includePagination: Bool,
+        contentRect: CGRect = CGRect(x: 24, y: 325, width: 372, height: 305)
+    ) throws -> CGImage {
         let width = 420
         let height = 932
         let context = try XCTUnwrap(CGContext(
@@ -156,7 +169,7 @@ final class PhotoExtractionTests: XCTestCase {
         context.setFillColor(CGColor(gray: 0.01, alpha: 1))
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         context.setFillColor(CGColor(red: 0.72, green: 0.48, blue: 0.22, alpha: 1))
-        context.fill(CGRect(x: 24, y: 325, width: 372, height: 305))
+        context.fill(contentRect)
         if includePagination {
             for index in 0..<7 {
                 context.setFillColor(CGColor(gray: index == 0 ? 0.95 : 0.38, alpha: 1))

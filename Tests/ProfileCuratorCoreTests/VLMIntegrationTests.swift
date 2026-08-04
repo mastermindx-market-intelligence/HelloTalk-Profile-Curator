@@ -20,6 +20,24 @@ final class VLMIntegrationTests: XCTestCase {
         XCTAssertNoThrow(try VLMConfiguration(baseURL: URL(string: "http://qwen-box:11434")).validatedBaseURL())
     }
 
+    func testOllamaAssistantMessageMayOmitRequestOnlyImagesField() throws {
+        let envelope = Data(#"{"message":{"role":"assistant","content":"{\"visual_appeal_score\":82}"}}"#.utf8)
+
+        let payload = try OllamaVLMClient.decodeJSONPayload(envelope)
+
+        XCTAssertEqual(String(decoding: payload, as: UTF8.self), #"{"visual_appeal_score":82}"#)
+    }
+
+    func testVisualAppealAcceptsSingleNoteAndClampsNegativePenalty() throws {
+        let response = Data(#"{"visual_appeal_score":82,"confidence":0.95,"photo_quality_penalty":-3,"notes":"clear"}"#.utf8)
+
+        let result = try JSONDecoder().decode(VisualAppealResult.self, from: response)
+
+        XCTAssertEqual(result.notes, ["clear"])
+        XCTAssertEqual(result.photoQualityPenalty, 0)
+        XCTAssertEqual(result.visualAppealScore, 82)
+    }
+
     func testOfflineFailureStaysInPersistentRetryQueue() async throws {
         let context = try temporaryRepository()
         let profile = try context.repository.upsert(ProfileDraft(usernameRaw: "@offline", age: 19, gender: .female, mbti: .infj))

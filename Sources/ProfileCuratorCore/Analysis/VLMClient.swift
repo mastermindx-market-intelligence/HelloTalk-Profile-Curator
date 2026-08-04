@@ -103,6 +103,18 @@ public struct VisualAppealResult: Codable, Hashable, Sendable {
         case photoQualityPenalty = "photo_quality_penalty"
         case notes
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        visualAppealScore = min(100, max(0, try container.decode(Double.self, forKey: .visualAppealScore)))
+        confidence = try container.decode(Double.self, forKey: .confidence)
+        photoQualityPenalty = max(0, try container.decode(Double.self, forKey: .photoQualityPenalty))
+        if let values = try? container.decode([String].self, forKey: .notes) {
+            notes = values
+        } else {
+            notes = [try container.decode(String.self, forKey: .notes)]
+        }
+    }
 }
 
 public struct LifestyleEvidence: Codable, Hashable, Sendable {
@@ -193,7 +205,7 @@ public enum VLMPromptLibrary {
     """
 
     public static let visualAppeal = """
-    Return JSON only. Estimate generic visible facial presentation and photographic clarity, not identity, ethnicity, personality, income, or compatibility. Score 0 to 100. Use keys: visual_appeal_score, confidence, photo_quality_penalty, notes, source_image_ids. confidence must be from 0.0 to 1.0. Treat this as a model estimate, not an objective fact.
+    Return JSON only. Estimate generic visible facial presentation and photographic clarity, not identity, ethnicity, personality, income, or compatibility. Score 0 to 100. Use keys: visual_appeal_score, confidence, photo_quality_penalty, notes, source_image_ids. confidence must be from 0.0 to 1.0, photo_quality_penalty must be from 0 to 100, and notes must be an array of strings. Treat this as a model estimate, not an objective fact.
     """
 
     public static let lifestyle = """
@@ -268,10 +280,7 @@ public actor OllamaVLMClient: VLMClientProtocol {
         ))
         let (data, response) = try await session.data(for: request)
         try validate(response)
-        let envelope = try JSONDecoder().decode(ChatResponse.self, from: data)
-        let cleaned = Self.cleanJSON(envelope.message.content)
-        guard let result = cleaned.data(using: .utf8) else { throw VLMClientError.invalidResponse }
-        return result
+        return try Self.decodeJSONPayload(data)
     }
 
     private func makeRequest(path: String, method: String) throws -> URLRequest {
@@ -294,6 +303,13 @@ public actor OllamaVLMClient: VLMClientProtocol {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    static func decodeJSONPayload(_ data: Data) throws -> Data {
+        let envelope = try JSONDecoder().decode(ChatResponse.self, from: data)
+        let cleaned = Self.cleanJSON(envelope.message.content)
+        guard let result = cleaned.data(using: .utf8) else { throw VLMClientError.invalidResponse }
+        return result
+    }
+
     private struct TagsResponse: Decodable { let models: [TagModel] }
     private struct TagModel: Decodable { let name: String }
     private struct ChatRequest: Encodable {
@@ -304,8 +320,9 @@ public actor OllamaVLMClient: VLMClientProtocol {
         let format: String
         let options: [String: Double]
     }
-    private struct ChatMessage: Codable { let role: String; let content: String; let images: [String] }
-    private struct ChatResponse: Decodable { let message: ChatMessage }
+    private struct ChatMessage: Encodable { let role: String; let content: String; let images: [String] }
+    private struct ChatResponse: Decodable { let message: ResponseMessage }
+    private struct ResponseMessage: Decodable { let content: String }
 }
 
 public enum VLMClientError: Error, LocalizedError, Sendable {
