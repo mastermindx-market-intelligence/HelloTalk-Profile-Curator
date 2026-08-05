@@ -344,6 +344,27 @@ struct ContentView: View {
                 Text(model.automationStatus)
                     .font(.callout)
                 LabeledContent("Live actions", value: "\(model.automationActionCount)")
+                Toggle("Hands-off recovery", isOn: $model.handsOffRecoveryEnabled)
+                    .disabled(model.automationRunState == .running)
+                HStack {
+                    Label(
+                        model.handsOffRecoveryEnabled ? "Self-recovery on" : "Pause on first error",
+                        systemImage: model.handsOffRecoveryEnabled ? "arrow.trianglehead.2.clockwise.rotate.90" : "pause.circle"
+                    )
+                    .foregroundStyle(model.handsOffRecoveryEnabled ? .green : .secondary)
+                    Spacer()
+                    Text("\(model.automaticRecoveryCount) recovered")
+                        .font(.caption.monospaced())
+                }
+                if let recovered = model.lastRecoveredError {
+                    Text("Last recovery: \(recovered)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                }
+                Text("Retries transient screens, exits viewers/popups, and skips an unrecoverable profile. Safety exclusions and STOP remain enforced.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Text(model.collectionRunMode == .customSearch
                     ? "Scans visible Custom Search rows by target city, opens each result's Moments-first page, switches to Profile, verifies age/gender/MBTI, collects media, returns to results, and refreshes at the bottom."
                     : "Visits profiles, verifies female age 18–21 and target MBTI, captures PFP/Moment still frames, queues Qwen, then follows visible similar profiles.")

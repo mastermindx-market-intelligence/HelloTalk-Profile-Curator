@@ -101,6 +101,18 @@ final class InspectorViewModel: ObservableObject {
     @Published var automationActionCount = 0
     @Published var automationProfileCount = 0
     @Published var collectionRunMode: CollectionRunMode = .similarProfiles
+    @Published var handsOffRecoveryEnabled: Bool = UserDefaults.standard.object(
+        forKey: "ProfileCurator.handsOffRecoveryEnabled"
+    ) as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(
+                handsOffRecoveryEnabled,
+                forKey: "ProfileCurator.handsOffRecoveryEnabled"
+            )
+        }
+    }
+    @Published var automaticRecoveryCount = 0
+    @Published var lastRecoveredError: String?
 
     let previewExclusions = DefaultInspectorCalibration.previewExclusions
 
@@ -125,6 +137,7 @@ final class InspectorViewModel: ObservableObject {
     private let socialControlDetector = SocialControlExclusionDetector()
     private let profileInteractionSafety = ProfileInteractionSafety()
     private let recommendationTargetRanker = VisibleRecommendationTargetRanker()
+    private let autonomousRecoveryPolicy = AutonomousRecoveryPolicy()
     private let liveInputExecutor = SafeInputExecutor(driver: CGEventInputDriver())
     private let eventStore: NavigationEventLogStore?
     private var currentCGImage: CGImage?
@@ -158,6 +171,7 @@ final class InspectorViewModel: ObservableObject {
     private var automationCustomSearchCandidateLocation: NormalizedLocation?
     private var automationLastFingerprint: String?
     private var automationWindowFrame: CGRect?
+    private var automationRecoveryAttempt = 0
 
     init() {
         eventStore = try? NavigationEventLogStore.defaultStore()
@@ -343,6 +357,9 @@ final class InspectorViewModel: ObservableObject {
         automationCollectedUsername = checkpoint?.currentUsername
         automationLastFingerprint = nil
         automationWindowFrame = nil
+        automationRecoveryAttempt = 0
+        automaticRecoveryCount = 0
+        lastRecoveredError = nil
         collectedProfileID = checkpoint?.currentProfileID
         windowGeometryGuard = nil
         errorMessage = nil
@@ -388,10 +405,17 @@ final class InspectorViewModel: ObservableObject {
             await liveInputExecutor.resolvePostcondition(passed: false)
             try await prepareAutomationWindow()
             while !Task.isCancelled && automationRunState == .running {
-                let snapshot = try await captureAutomationFrame()
-                try Task.checkCancellation()
-                try await handleAutomationSnapshot(snapshot)
-                try await Task.sleep(for: .milliseconds(250))
+                do {
+                    let snapshot = try await captureAutomationFrame()
+                    try Task.checkCancellation()
+                    try await handleAutomationSnapshot(snapshot)
+                    automationRecoveryAttempt = 0
+                    try await Task.sleep(for: .milliseconds(250))
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    guard try await runHandsOffRecoveryCircuit(from: error) else { throw error }
+                }
             }
         } catch is CancellationError {
             // Pause and Stop deliberately cancel the task. Their button handlers own status text.
@@ -406,6 +430,164 @@ final class InspectorViewModel: ObservableObject {
             recordEvent(.sessionPaused, summary: automationStatus)
         }
         automationTask = nil
+    }
+
+    private func runHandsOffRecoveryCircuit(from initialError: Error) async throws -> Bool {
+        var currentError = initialError
+        while !Task.isCancelled {
+            do {
+                return try await attemptHandsOffRecovery(from: currentError)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                currentError = error
+                lastRecoveredError = error.localizedDescription
+                recordEvent(
+                    .postcondition,
+                    summary: "Hands-off recovery action failed · escalating · \(error.localizedDescription)"
+                )
+                if automationRecoveryAttempt >= AutonomousRecoveryPolicy.maximumAttemptsPerIncident {
+                    throw error
+                }
+            }
+        }
+        throw CancellationError()
+    }
+
+    private func attemptHandsOffRecovery(from error: Error) async throws -> Bool {
+        guard handsOffRecoveryEnabled,
+              automationRunState == .running,
+              !sessionState.isPaused,
+              error is AutomationRuntimeError,
+              let snapshot = observationSnapshot else {
+            return false
+        }
+        if case AutomationRuntimeError.permissionsMissing = error { return false }
+        if case AutomationRuntimeError.mirroringWindowMissing = error { return false }
+
+        automationRecoveryAttempt += 1
+        let step = autonomousRecoveryPolicy.step(
+            for: snapshot.screen.kind,
+            attempt: automationRecoveryAttempt
+        )
+        guard step != .stop else { return false }
+
+        automaticRecoveryCount += 1
+        lastRecoveredError = error.localizedDescription
+        errorMessage = nil
+        automationStatus = "Hands-off recovery \(automaticRecoveryCount) · \(recoveryStepLabel(step))"
+        recordEvent(
+            .safetyDecision,
+            summary: "Hands-off recovery \(automationRecoveryAttempt)/\(AutonomousRecoveryPolicy.maximumAttemptsPerIncident) · \(step) · \(error.localizedDescription)"
+        )
+
+        switch step {
+        case .recapture:
+            try await Task.sleep(for: .milliseconds(900))
+
+        case .closePFPViewer:
+            let close = try calibratedAction(
+                context: .pfpViewer,
+                kind: .safeBackClose,
+                actionKind: .closeViewer,
+                rationale: "Hands-off recovery closes the verified profile-photo viewer"
+            )
+            _ = try await performClick(close, context: .pfpViewer, expecting: .profilePageDetected)
+            automationPhase = .openMoments
+
+        case .dismissMomentViewer:
+            try await dismissMomentViewer()
+            automationPhase = .scanMoments
+
+        case .finishMoments:
+            automationPendingMomentKeys = []
+            automationPhase = .exitMoments
+            try await finishMediaCollection(snapshot)
+
+        case .dismissProfileOverflow:
+            guard let cancel = ProfileOverflowMenuDismissPlanner().cancelAction(
+                observations: analysis?.text ?? []
+            ) else { return true }
+            _ = try await performClick(cancel, context: .momentsFeed, expecting: .profilePageDetected)
+            automationPhase = currentCollectedProfile() == nil ? .scanProfile : .scanMoments
+
+        case .dismissInterstitial:
+            guard let close = InterstitialAdDismissPlanner().closeAction(
+                observations: analysis?.text ?? []
+            ) else { return true }
+            _ = try await performClick(
+                close,
+                context: .momentViewer,
+                expecting: .contentHashChanged(previous: snapshot.fingerprint)
+            )
+            automationPhase = .scanMoments
+
+        case .backToPreviousSurface:
+            let back = fallbackBackAction(rationale: "Hands-off recovery returns to the previous verified surface")
+            let next = try await performClick(
+                back,
+                context: recoveryBackContext(for: snapshot.screen.kind),
+                expecting: .contentHashChanged(previous: snapshot.fingerprint)
+            )
+            automationPendingMomentKeys = []
+            automationViewerChromeProbed = false
+            automationViewerIndices = []
+            automationPhase = next.screen.kind == .momentsFeed ? .scanMoments : .seekSuggestions
+
+        case .abandonProfile:
+            if collectionRunMode == .customSearch {
+                try await returnToCustomSearch(context: .profile)
+            } else {
+                let back = fallbackBackAction(rationale: "Skip an unrecoverable profile and return to its recommendation source")
+                _ = try await performClick(
+                    back,
+                    context: .profile,
+                    expecting: .contentHashChanged(previous: snapshot.fingerprint)
+                )
+                automationPhase = .seekSuggestions
+                automationScrollAttempts = 0
+            }
+
+        case .resumeRecommendationGallery:
+            automationPhase = .openRecommendation
+            try await openNextRecommendation(snapshot)
+
+        case .resumeCustomSearch:
+            automationPhase = .scanCustomSearch
+            try await handleCustomSearch(snapshot)
+
+        case .resumeConnectFeed:
+            automationPhase = .acquireSeed
+
+        case .stop:
+            return false
+        }
+        return true
+    }
+
+    private func recoveryBackContext(for screen: DetectedScreenKind) -> CalibrationContext {
+        switch screen {
+        case .momentViewer, .interstitialAd: .momentViewer
+        case .momentsFeed, .momentDetails, .profileOverflowMenu: .momentsFeed
+        default: .profile
+        }
+    }
+
+    private func recoveryStepLabel(_ step: AutonomousRecoveryStep) -> String {
+        switch step {
+        case .recapture: "waiting for a stable frame"
+        case .closePFPViewer: "closing profile photo"
+        case .dismissMomentViewer: "closing Moment viewer"
+        case .finishMoments: "finishing Moment collection"
+        case .dismissProfileOverflow: "closing profile menu"
+        case .dismissInterstitial: "closing advertisement"
+        case .backToPreviousSurface: "returning to the previous screen"
+        case .abandonProfile: "skipping the current profile"
+        case .resumeRecommendationGallery: "continuing recommendations"
+        case .resumeCustomSearch: "continuing Custom Search"
+        case .resumeConnectFeed: "continuing Connect discovery"
+        case .stop: "recovery exhausted"
+        }
     }
 
     private func prepareAutomationWindow() async throws {
