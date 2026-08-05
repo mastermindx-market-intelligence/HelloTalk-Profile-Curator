@@ -72,6 +72,22 @@ final class ProfileInteractionSafetyTests: XCTestCase {
         )
     }
 
+    func testVerifiedHeaderRequiresUsernameAgeTabsAndSocialBar() {
+        let observations = [
+            observation("Anne", x: 0.06, y: 0.26, width: 0.18),
+            observation("22", x: 0.25, y: 0.26, width: 0.06),
+            observation("@k_anne233", x: 0.06, y: 0.30, width: 0.24),
+            observation("About Me", x: 0.06, y: 0.48, width: 0.18),
+            observation("Moments", x: 0.38, y: 0.48, width: 0.18),
+            observation("Follow", x: 0.08, y: 0.90, width: 0.20),
+            observation("Say Hi", x: 0.45, y: 0.90, width: 0.20)
+        ]
+
+        XCTAssertTrue(safety.hasVerifiedProfileHeader(in: observations))
+        XCTAssertFalse(safety.hasVerifiedProfileHeader(in: observations.filter { $0.text != "@k_anne233" }))
+        XCTAssertFalse(safety.hasVerifiedProfileHeader(in: observations.filter { $0.text != "22" }))
+    }
+
     private func observation(
         _ text: String,
         x: Double,

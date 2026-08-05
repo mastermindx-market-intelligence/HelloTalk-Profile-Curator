@@ -37,6 +37,24 @@ public struct ProfileInteractionSafety: Sendable {
         )
     }
 
+    /// A new recommendation may inherit the previous profile's scroll offset.
+    /// Stop recovery as soon as independent header evidence is visible rather
+    /// than requiring every configured wheel pass to run.
+    public func hasVerifiedProfileHeader(in observations: [OCRObservation]) -> Bool {
+        let combined = observations.map(\.text).joined(separator: " · ")
+        let hasUsername = observations.contains {
+            $0.confidence >= 0.55
+                && $0.text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("@")
+        }
+        let hasAge = ProfileHeaderParser().bestHeaderAge(in: observations, minimumConfidence: 0.55) != nil
+        let hasTabs = tabAction(named: "About Me", in: observations) != nil
+            && tabAction(named: "Moments", in: observations) != nil
+        let matcher = OCRAnchorMatcher()
+        let hasSocialBar = matcher.contains(anchor: "Follow", in: combined)
+            && matcher.contains(anchor: "Say Hi", in: combined)
+        return hasUsername && hasAge && hasTabs && hasSocialBar
+    }
+
     public func learningStatsExclusions(in observations: [OCRObservation]) -> [ExclusionZone] {
         let joined = observations.filter {
             normalize($0.text).contains("joined") && $0.confidence >= 0.55

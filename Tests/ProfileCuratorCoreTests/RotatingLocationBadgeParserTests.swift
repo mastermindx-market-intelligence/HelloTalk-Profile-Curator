@@ -108,4 +108,18 @@ final class RotatingLocationBadgeParserTests: XCTestCase {
         XCTAssertNil(result.location)
         XCTAssertNil(result.source)
     }
+
+    func testSeoulSouthKoreaTimedBadgeResolvesWithoutUsingMapLabels() {
+        let frame = [
+            OCRObservation(text: "Seoul, South Korea 10:28am", confidence: 0.94, bounds: bounds),
+            OCRObservation(text: "Incheon", confidence: 0.99, bounds: NormalizedRect(x: 0.10, y: 0.20, width: 0.18, height: 0.03))
+        ]
+
+        let result = RotatingLocationBadgeParser().resolve(frames: [frame])
+
+        XCTAssertEqual(result.location?.city, "Seoul")
+        XCTAssertEqual(result.location?.country, "South Korea")
+        XCTAssertEqual(result.location?.score, 30)
+        XCTAssertEqual(result.source?.rawText, "Seoul, South Korea 10:28am")
+    }
 }

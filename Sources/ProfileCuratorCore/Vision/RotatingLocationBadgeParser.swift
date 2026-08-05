@@ -65,7 +65,7 @@ public struct RotatingLocationBadgeParser: Sendable {
         options: [.caseInsensitive]
     )
     private static let badgeLocationWithoutTimeExpression = try! NSRegularExpression(
-        pattern: #"^[•·]?\s*(.{2,48}?),\s*(CHINA|UNITED STATES|USA|AUSTRALIA|UNITED KINGDOM|UK|CANADA)\s*$"#,
+        pattern: #"^[•·]?\s*(.{2,48}?),\s*(CHINA|UNITED STATES|USA|AUSTRALIA|UNITED KINGDOM|UK|CANADA|SOUTH KOREA|REPUBLIC OF KOREA)\s*$"#,
         options: [.caseInsensitive]
     )
 

@@ -1329,6 +1329,17 @@ final class InspectorViewModel: ObservableObject {
     }
 
     private func continueAcquireProfileTop(previousFingerprint: String?) async throws {
+        if let observations = analysis?.text,
+           profileInteractionSafety.hasVerifiedProfileHeader(in: observations),
+           let snapshot = observationSnapshot {
+            automationReturnToTopScrollsRemaining = 0
+            automationScrollAttempts = 0
+            automationPhase = .scanProfile
+            automationStatus = "New profile header verified · reading profile"
+            recordEvent(.postcondition, summary: "passed · verified username, age badge, profile tabs, and social bar")
+            try await handleProfileTop(snapshot)
+            return
+        }
         let maximumAttempts = ProfileInteractionSafety.maximumAcquireProfileTopScrollAttempts
         guard automationScrollAttempts < maximumAttempts else {
             throw AutomationRuntimeError.unknownState(

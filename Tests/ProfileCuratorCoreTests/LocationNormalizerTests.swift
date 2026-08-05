@@ -85,4 +85,13 @@ final class LocationNormalizerTests: XCTestCase {
         XCTAssertEqual(missing.tier, 6)
         XCTAssertEqual(missing.score, 10)
     }
+
+    func testSouthKoreaIsRecognizedAsMiscellaneousForeignLocation() {
+        let result = LocationNormalizer().normalize("Seoul, South Korea")
+
+        XCTAssertEqual(result.city, "Seoul")
+        XCTAssertEqual(result.country, "South Korea")
+        XCTAssertEqual(result.tier, 5)
+        XCTAssertEqual(result.score, 30)
+    }
 }

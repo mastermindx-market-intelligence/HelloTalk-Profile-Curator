@@ -77,6 +77,22 @@ public struct LocationNormalizer: Sendable {
     public func normalize(_ rawText: String) -> NormalizedLocation {
         let folded = rawText.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current).lowercased()
 
+        let isSouthKorea = folded.range(
+            of: #"\b(south korea|republic of korea|korea,? republic of)\b"#,
+            options: .regularExpression
+        ) != nil || rawText.contains("대한민국") || rawText.contains("한국")
+        if isSouthKorea {
+            return NormalizedLocation(
+                rawText: rawText,
+                city: folded.contains("seoul") || rawText.contains("서울") ? "Seoul" : nil,
+                province: nil,
+                country: "South Korea",
+                tier: 5,
+                score: 30,
+                confidence: 0.95
+            )
+        }
+
         if let entry = Self.entries.first(where: { entry in
             entry.aliases.contains { folded.contains($0.lowercased()) }
         }) {
