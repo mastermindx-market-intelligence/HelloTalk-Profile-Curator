@@ -42,6 +42,7 @@ final class JimuOfflineInspectorModel: ObservableObject {
             let value = try repository.jimuSnapshot(id: id, policy: policy)
             let labels = try repository.jimuFeedback(observationID: id)
             snapshot = value; feedback = labels
+            notice = "Stored observation loaded. Original evidence and \(value.corrections.count) correction(s) preserved."
         }
     }
     func compare(with id: String?) {
@@ -101,11 +102,14 @@ final class JimuOfflineInspectorModel: ObservableObject {
             loadPolicy(try Self.boundedRead(url, limit: 65_536))
         }
     }
-    func correct(fieldID: String, state: String, valueJSON: String, reason: String) {
+    func correct(fieldID: String, state: String, valueJSON: String, reason: String, valueIsText: Bool = false) {
         perform {
             guard let snapshot else { throw JimuReplayError(code: "observation_not_selected") }
             guard valueJSON.utf8.count <= 65_536 else { throw JimuReplayError(code: "correction_too_large") }
-            let value: JimuJSON = state == "PRESENT" ? try JSONDecoder().decode(JimuJSON.self, from: Data(valueJSON.utf8)) : .null
+            let value: JimuJSON
+            if state != "PRESENT" { value = .null }
+            else if valueIsText { value = .string(valueJSON) }
+            else { value = try JSONDecoder().decode(JimuJSON.self, from: Data(valueJSON.utf8)) }
             _ = try requiredRepository().appendJimuCorrection(snapshot: snapshot, policy: policy, fieldID: fieldID, state: state, value: value, reason: reason)
             select(snapshot.id)
             notice = "Correction appended. Original evidence and earlier labels have not changed."

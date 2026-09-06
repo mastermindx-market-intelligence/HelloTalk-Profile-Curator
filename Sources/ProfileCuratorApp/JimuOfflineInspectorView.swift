@@ -13,7 +13,6 @@ struct JimuOfflineInspectorView: View {
     @State private var editValue = "\"\""
     @State private var editReason = ""
     @State private var actionContext = ""
-    @State private var comparisonID = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -63,6 +62,9 @@ struct JimuOfflineInspectorView: View {
             Text("This removes its original observation, corrections and feedback involving it. This cannot be undone.")
         }
         .onChange(of: model.snapshot?.id) { _, _ in resetEditor() }
+        .onChange(of: selectedField) { _, value in
+            if let field = model.snapshot?.effectiveFields.first(where: { $0.fieldID == value }) { populateEditor(field) }
+        }
         .frame(minWidth: 1_050, minHeight: 720)
     }
 
@@ -156,7 +158,7 @@ struct JimuOfflineInspectorView: View {
                         if original != field {
                             Text("Original: \(original.value.inspectorText)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                         }
-                        Text("\(field.sourceKind) · \(original.extractorVersion) · sources: \(original.sourceObservationIDs.joined(separator: ", "))")
+                        Text("\(field.sourceKind) · \(field.extractorVersion) · sources: \(original.sourceObservationIDs.joined(separator: ", "))")
                             .font(.caption2).foregroundStyle(.secondary).textSelection(.enabled)
                         if let raw = original.rawText {
                             Text("Original source text: \(raw)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
@@ -179,10 +181,10 @@ struct JimuOfflineInspectorView: View {
                     ForEach(["PRESENT", "ABSENT", "NOT_OBSERVED", "UNREADABLE", "CONFLICT"], id: \.self) { Text($0).tag($0) }
                 }
             }
-            TextField("JSON value, for example \"Corrected text\"", text: $editValue).textFieldStyle(.roundedBorder).disabled(editState != "PRESENT")
+            TextField(correctionIsText ? "Corrected text" : "JSON value, for example 3 or true", text: $editValue).textFieldStyle(.roundedBorder).disabled(editState != "PRESENT")
             TextField("Why are you correcting this?", text: $editReason).textFieldStyle(.roundedBorder)
             Button("Append correction") {
-                model.correct(fieldID: selectedField, state: editState, valueJSON: editValue, reason: editReason)
+                model.correct(fieldID: selectedField, state: editState, valueJSON: editValue, reason: editReason, valueIsText: correctionIsText)
                 if model.errorCode == nil { editReason = "" }
             }.disabled(selectedField.isEmpty || editReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }.padding(16).background(.background, in: RoundedRectangle(cornerRadius: 12))
@@ -199,10 +201,10 @@ struct JimuOfflineInspectorView: View {
                 Label("Visual-only: image evidence unavailable", systemImage: "lock").font(.caption).foregroundStyle(.secondary)
             }.disabled(!snapshot.preferenceLabelsAllowed)
             HStack {
-                Picker("Compare", selection: $comparisonID) {
+                Picker("Compare", selection: Binding(get: { model.comparison?.id ?? "" }, set: { model.compare(with: $0.isEmpty ? nil : $0) })) {
                     Text("No comparison").tag("")
                     ForEach(model.observations.filter { $0.id != snapshot.id }) { Text($0.id).tag($0.id) }
-                }.onChange(of: comparisonID) { _, value in model.compare(with: value.isEmpty ? nil : value) }
+                }
             }
             if let comparison = model.comparison {
                 VStack(alignment: .leading, spacing: 6) {
@@ -263,10 +265,17 @@ struct JimuOfflineInspectorView: View {
             }
         }.padding(16).background(.background, in: RoundedRectangle(cornerRadius: 12))
     }
+    private var correctionIsText: Bool {
+        guard let field = model.snapshot?.report.fields.first(where: { $0.fieldID == selectedField }) else { return false }
+        if case .string = field.value { return true }
+        return false
+    }
     private func populateEditor(_ field: JimuReplayField) {
-        selectedField = field.fieldID; editState = field.state; editValue = field.value.inspectorJSON; editReason = ""
+        selectedField = field.fieldID; editState = field.state; editReason = ""
+        if case .string(let text) = field.value { editValue = text }
+        else { editValue = field.value.inspectorJSON }
     }
     private func resetEditor() {
-        selectedField = ""; editState = "PRESENT"; editValue = "\"\""; editReason = ""; comparisonID = ""
+        selectedField = ""; editState = "PRESENT"; editValue = "\"\""; editReason = ""
     }
 }

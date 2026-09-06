@@ -54,5 +54,6 @@ jobs:
             ${{ runner.temp }}/w1-tests.log
             ${{ runner.temp }}/jimu-w1-source.bundle
             ${{ runner.temp }}/jimu-ui-proof/*.png
+            ${{ runner.temp }}/jimu-ui-proof/*.json
           retention-days: 3
           if-no-files-found: error
