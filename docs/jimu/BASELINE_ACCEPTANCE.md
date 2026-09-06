@@ -22,6 +22,6 @@ GitHub reports this repository as PUBLIC, despite its description. Only generic 
 
 W0 and W1 are authorized by the owner's current instruction. W0's replay starter is the first source slice; native contract, platform permission, installed account entitlements and real-device proof remain unverified. W1 must deliver a working immutable offline inspector in the existing app, not just a schema. W0 live evidence gaps do not block synthetic/offline W1 work.
 
-W2 may proceed in parallel once the common observation contract in `OBSERVATION_ENVELOPE_V1.md` is consumed through an exact-version fixture at both boundaries. The contract is agreed; adapter conformance and real-device readiness are not proven. W3/W4 follow usable observation and labeling data. New worker placement, pickup, execution start, source review, merge and production proof remain separate events. This receipt creates no Executive Job/Attempt or worker assignment.
+The common observation contract in `OBSERVATION_ENVELOPE_V1.md` is agreed, so bounded W2 implementation may proceed in parallel with W1. Exact-version fixture conformance at both boundaries is an acceptance gate; adapter conformance and real-device readiness are not yet proven. W3/W4 follow usable observation and labeling data. New worker placement, pickup, execution start, source review, merge and production proof remain separate events. This receipt creates no Executive Job/Attempt or worker assignment.
 
 W0 source operation: `jimu-w0-offline-replay-20260906-sol-001`.
