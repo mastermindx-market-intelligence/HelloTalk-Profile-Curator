@@ -41,7 +41,7 @@ public struct ImagePerceptualHasher: Sendable {
 
 public final class MediaStore: @unchecked Sendable {
     public let rootURL: URL
-    private let repository: ProfileRepository
+    let repository: ProfileRepository // Module-local extensions share this media/database owner.
     private let fileManager: FileManager
     private let hasher = ImagePerceptualHasher()
 

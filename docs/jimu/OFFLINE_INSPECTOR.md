@@ -1,4 +1,4 @@
-# Jimu native offline inspector — W1 text-evidence slice
+# Jimu native offline inspector — W1 text and source-image evidence
 
 This is an implementation in the existing macOS application, not a second app/database or a live Jimu integration. The accepted Architecture v1.0 and separate private Preference Policy v1 remain controlling.
 
@@ -30,7 +30,7 @@ The local profile-evidence buttons record manual approve/reject labels. Comparin
 
 ## Important limitation: text evidence is not visual calibration
 
-This slice does not import/authenticate source-frame bytes or display isolated photo crops. Every feedback basis is marked `TEXT_EVIDENCE_ONLY_V1` and `modelScoresVisible=false`. **Visual-only feedback is refused**, not approximated from profile text. A later training consumer must filter by compatible presentation kind and scope; it must not mix these text-only records into visual training.
+The optional local source-image increment now binds matching frame bytes through the existing MediaStore; see [SOURCE_IMAGE_INSPECTION.md](SOURCE_IMAGE_INSPECTION.md). It does not authenticate capture origin or display isolated photo crops. Existing feedback bases remain `TEXT_EVIDENCE_ONLY_V1` and `modelScoresVisible=false`. New feedback on source-image-bound observations is held until an image-specific presentation contract is implemented. **Visual-only feedback is refused**, not approximated from profile text. A later training consumer must filter by compatible presentation kind and scope; it must not mix these text-only records into visual training.
 
 Profile references are inspectable declarations, not authenticated sensor-envelope/asset receipts. Overall candidate eligibility and native platform capability remain unverified. No model, embedding, trained ranking head, device adapter, Note generator or executor is added.
 
@@ -46,4 +46,4 @@ The dedicated W1 workflow runs on the exact source branch with read-only reposit
 
 ## Continuation
 
-The next W1 capability is local source-asset binding plus isolated visual presentation and scope-correct visual labels, preserving these immutable records and the same database. Shared raw-envelope/asset conformance with W2, independent review and owner-Mac proof remain separate acceptance work. W0 native rights/device gaps must not stall this offline path. No live engagement is authorized by this implementation.
+Local source-byte binding and preview are implemented. The next W1 capability is isolated visual presentation and scope-correct image-bound visual labels, preserving these immutable records and the same database. Shared raw-envelope/asset conformance with W2, independent review and owner-Mac proof remain separate acceptance work. W0 native rights/device gaps must not stall this offline path. No live engagement is authorized by this implementation.

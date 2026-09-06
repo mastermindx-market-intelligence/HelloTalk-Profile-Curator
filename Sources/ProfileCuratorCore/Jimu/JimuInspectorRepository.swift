@@ -123,11 +123,13 @@ public extension ProfileRepository {
             let current = try Self.jimuSnapshot(id: snapshot.id, policy: policy, database: database)
             guard current.revision == snapshot.revision else { throw JimuReplayError(code: "stale_presentation") }
             guard current.preferenceLabelsAllowed else { throw JimuReplayError(code: "adult_evidence_required") }
+            guard !current.sourceImageBound else { throw JimuReplayError(code: "source_image_label_presentation_pending") }
             var other: JimuInspectorSnapshot?
             if let comparison {
                 other = try Self.jimuSnapshot(id: comparison.id, policy: policy, database: database)
                 guard other?.revision == comparison.revision else { throw JimuReplayError(code: "stale_presentation") }
                 guard other?.preferenceLabelsAllowed == true else { throw JimuReplayError(code: "adult_evidence_required") }
+                guard other?.sourceImageBound == false else { throw JimuReplayError(code: "source_image_label_presentation_pending") }
                 guard other?.observation.platform == current.observation.platform,
                       other?.observation.accountID == current.observation.accountID else { throw JimuReplayError(code: "comparison_namespace_mismatch") }
             }
@@ -158,7 +160,10 @@ public extension ProfileRepository {
 
     /// Explicit privacy deletion is separate from append-only correction; no hidden copy remains in another store.
     func deleteJimuObservation(id: String) throws {
-        try databaseQueue.write { try $0.execute(sql: "DELETE FROM profile_observations WHERE id = ?", arguments: [id]) }
+        try databaseQueue.write { database in
+            try removeJimuSourceMedia(database: database, observationID: id)
+            try database.execute(sql: "DELETE FROM profile_observations WHERE id = ?", arguments: [id])
+        }
     }
 
     private static func jimuStored(id: String, database: Database) throws -> JimuStoredObservation? {
@@ -170,12 +175,13 @@ public extension ProfileRepository {
             importPolicy: try policyData.map { try JimuInspectorCoding.decode(JimuReplayPolicy.self, from: $0) })
     }
 
-    private static func jimuSnapshot(id: String, policy: JimuReplayPolicy?, database: Database) throws -> JimuInspectorSnapshot {
+    static func jimuSnapshot(id: String, policy: JimuReplayPolicy?, database: Database) throws -> JimuInspectorSnapshot {
         guard let stored = try jimuStored(id: id, database: database) else { throw JimuReplayError(code: "observation_not_found") }
         let report = try JimuReplay.inspect(stored.rawData, policy: policy)
         let corrections = try Data.fetchAll(database, sql: "SELECT payload FROM observation_corrections WHERE observation_id = ? ORDER BY sequence", arguments: [id])
             .map { try JimuInspectorCoding.decode(JimuCorrection.self, from: $0) }
         return JimuInspectorSnapshot(observation: stored, report: report, corrections: corrections,
-            basis: try JimuInspectorCoding.basis(observation: stored, corrections: corrections, policy: policy))
+            basis: try JimuInspectorCoding.basis(observation: stored, corrections: corrections, policy: policy),
+            sourceImageBound: try JimuSourceMediaSchema.record(id: id, database: database) != nil)
     }
 }

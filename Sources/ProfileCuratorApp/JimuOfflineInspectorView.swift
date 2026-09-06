@@ -7,6 +7,7 @@ struct JimuOfflineInspectorView: View {
     @ObservedObject var model: JimuOfflineInspectorModel
     @State private var importing = false
     @State private var importingPolicy = false
+    @State private var importingSource = false
     @State private var deleting = false
     @State private var selectedField = ""
     @State private var editState = "PRESENT"
@@ -24,6 +25,7 @@ struct JimuOfflineInspectorView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 18) {
                             identity(snapshot)
+                            sourceEvidence(snapshot)
                             evidence(snapshot)
                             correction(snapshot)
                             feedbackControls(snapshot)
@@ -54,6 +56,9 @@ struct JimuOfflineInspectorView: View {
         }
         .fileImporter(isPresented: $importingPolicy, allowedContentTypes: [.json]) { result in
             if case .success(let url) = result { model.loadPolicyFile(url) }
+        }
+        .fileImporter(isPresented: $importingSource, allowedContentTypes: [.png, .jpeg]) { result in
+            if case .success(let url) = result { model.importSourceFile(url) }
         }
         .alert("Delete this observation and its history?", isPresented: $deleting) {
             Button("Delete", role: .destructive) { model.deleteSelected() }
@@ -132,7 +137,7 @@ struct JimuOfflineInspectorView: View {
             if !snapshot.report.reasonCodes.isEmpty {
                 Text(snapshot.report.reasonCodes.joined(separator: " · ")).font(.caption).foregroundStyle(.orange)
             }
-            Label("Text evidence only. Source-frame bytes are not imported or authenticated in this slice.", systemImage: "photo.badge.exclamationmark")
+            Label(snapshot.sourceImageBound ? "Local source bytes bound. Capture origin remains unverified." : "Text evidence only until matching source bytes are attached.", systemImage: "photo.badge.exclamationmark")
                 .font(.caption).foregroundStyle(.secondary)
         }.padding(18).background(.background, in: RoundedRectangle(cornerRadius: 12))
     }
@@ -142,6 +147,35 @@ struct JimuOfflineInspectorView: View {
             Text(value.replacingOccurrences(of: "_", with: " ")).font(.caption.bold())
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
+    private func sourceEvidence(_ snapshot: JimuInspectorSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Source image / local evidence").font(.headline)
+                Spacer()
+                Button("Attach source image…") { importingSource = true }
+                    .disabled(!snapshot.preferenceLabelsAllowed || snapshot.sourceImageBound)
+            }
+            if let source = model.sourceFrame {
+                Image(decorative: source.image, scale: 1)
+                    .resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: 320)
+                    .accessibilityLabel("Locally verified full source image, not isolated calibration")
+                Label("Byte match verified", systemImage: "checkmark.shield")
+                    .font(.caption.bold()).foregroundStyle(.teal)
+                Text("\(source.record.width) × \(source.record.height) pixels · \(source.record.byteCount) bytes")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("SHA-256: \(source.record.frameSHA256)")
+                    .font(.caption2.monospaced()).textSelection(.enabled)
+            } else {
+                Label(snapshot.sourceImageBound ? "Stored source image is unavailable; see the reported error." : "No source image attached.",
+                    systemImage: "photo.badge.exclamationmark").foregroundStyle(.secondary)
+                Text("Choose the original local PNG or JPEG matching this observation's declared frame hash. Files are checked before display.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Text("Capture origin remains unverified. A full source frame is not photo-only calibration; new labels on image-bound observations remain paused.")
+                .font(.caption).foregroundStyle(.secondary)
+        }.padding(16).background(.background, in: RoundedRectangle(cornerRadius: 12))
+    }
+
     private func evidence(_ snapshot: JimuInspectorSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Observed fields").font(.headline)
@@ -199,7 +233,7 @@ struct JimuOfflineInspectorView: View {
                 Button("Reject profile evidence") { model.label(.reject, scope: .fullProfile) }
                 Spacer()
                 Label("Visual-only: image evidence unavailable", systemImage: "lock").font(.caption).foregroundStyle(.secondary)
-            }.disabled(!snapshot.preferenceLabelsAllowed)
+            }.disabled(!snapshot.preferenceLabelsAllowed || snapshot.sourceImageBound)
             HStack {
                 Picker("Compare", selection: Binding(get: { model.comparison?.id ?? "" }, set: { model.compare(with: $0.isEmpty ? nil : $0) })) {
                     Text("No comparison").tag("")
@@ -217,7 +251,7 @@ struct JimuOfflineInspectorView: View {
                         Button("Prefer comparison") { model.label(.right, scope: .fullProfile, paired: true) }
                         Button("Tie") { model.label(.tie, scope: .fullProfile, paired: true) }
                         Button("Neither") { model.label(.neither, scope: .fullProfile, paired: true) }
-                    }.disabled(!snapshot.preferenceLabelsAllowed || !comparison.preferenceLabelsAllowed)
+                    }.disabled(!snapshot.preferenceLabelsAllowed || !comparison.preferenceLabelsAllowed || snapshot.sourceImageBound || comparison.sourceImageBound)
                 }.padding(10).background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
             }
             Divider()
@@ -229,7 +263,11 @@ struct JimuOfflineInspectorView: View {
                         model.label(choice, scope: .scarceAction, context: actionContext)
                     }
                 }
-            }.disabled(!snapshot.preferenceLabelsAllowed || actionContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }.disabled(!snapshot.preferenceLabelsAllowed || snapshot.sourceImageBound || actionContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            if snapshot.sourceImageBound {
+                Text("New labels paused: this observation now includes an image. Its earlier text-only labels remain intact; isolated visual presentation is the next capability.")
+                    .font(.caption).foregroundStyle(.orange)
+            }
             if !snapshot.preferenceLabelsAllowed {
                 Text("Preference labeling is held: configure an eligible explicit-age policy and resolve any age correction through new platform evidence.")
                     .font(.caption).foregroundStyle(.orange)
@@ -259,7 +297,7 @@ struct JimuOfflineInspectorView: View {
                         !model.feedback.contains(where: { $0.supersedesID == label.id }) {
                         Button("Append opposite judgment") {
                             model.label(label.choice == .approve ? .reject : .approve, scope: .fullProfile, supersedesID: label.id)
-                        }.font(.caption).disabled(!snapshot.preferenceLabelsAllowed)
+                        }.font(.caption).disabled(!snapshot.preferenceLabelsAllowed || snapshot.sourceImageBound)
                     }
                 }
             }

@@ -40,6 +40,7 @@ public struct JimuInspectorSnapshot: Identifiable, Sendable {
     public let report: JimuReplayReport
     public let corrections: [JimuCorrection]
     public let basis: JimuFeedbackBasis
+    public let sourceImageBound: Bool
     public var revision: String { basis.revision }
     public var preferenceLabelsAllowed: Bool {
         report.ageEligibility == "ELIGIBLE_FOR_REVIEW" &&

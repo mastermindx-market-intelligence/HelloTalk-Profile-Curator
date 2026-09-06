@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import CryptoKit
 import SwiftUI
 import XCTest
 import ProfileCuratorCore
@@ -109,6 +110,59 @@ final class JimuInspectorNativeViewTests: XCTestCase {
             XCTAssertEqual(model.feedback.first?.scope, .fullProfile)
             XCTAssertEqual(model.feedback.first?.basis.presentationKind, "TEXT_EVIDENCE_ONLY_V1")
             try Self.render(model: model, name: "05-pairwise-history.png", height: 900, scrollToBottom: true)
+        }
+    }
+
+    func testNativeSourceImageImportAndRestartPreserveEvidenceAndOldLabels() async throws {
+        try await MainActor.run {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let dbPath = root.appendingPathComponent("curator.sqlite").path
+            let model = JimuOfflineInspectorModel(repository: try ProfileRepository(databasePath: dbPath))
+            let policy = JimuReplayPolicy(policyID: "synthetic-source-review-v1", minimumAge: 25, maximumAge: 40, allowedRightsScopeIDs: [])
+            model.loadPolicy(try JSONEncoder().encode(policy))
+            let context = try XCTUnwrap(CGContext(data: nil, width: 640, height: 360, bitsPerComponent: 8,
+                bytesPerRow: 2_560, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.setFillColor(CGColor(red: 0.08, green: 0.28, blue: 0.38, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: 640, height: 360))
+            context.setFillColor(CGColor(red: 0.8, green: 0.63, blue: 0.2, alpha: 1))
+            context.fillEllipse(in: CGRect(x: 210, y: 70, width: 220, height: 220))
+            let bitmap = NSBitmapImageRep(cgImage: try XCTUnwrap(context.makeImage()))
+            let imageBytes = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+            let hash = SHA256.hash(data: imageBytes).map { String(format: "%02x", $0) }.joined()
+            let selectedFile = root.appendingPathComponent("synthetic-source.png")
+            try imageBytes.write(to: selectedFile)
+            let sourceRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            let data = try Data(contentsOf: sourceRoot.appendingPathComponent("fixtures/jimu/synthetic/profile.json"))
+            var document = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            document["frame_sha256"] = hash
+            model.importObservation(try JSONSerialization.data(withJSONObject: document, options: [.sortedKeys]))
+            let original = try XCTUnwrap(model.snapshot)
+            model.label(.approve, scope: .fullProfile)
+            let oldLabel = try XCTUnwrap(model.feedback.first)
+            model.importSourceFile(selectedFile)
+            XCTAssertNil(model.errorCode)
+            XCTAssertEqual(model.sourceFrame?.record.frameSHA256, hash)
+            XCTAssertEqual(model.sourceFrame?.image.width, 640)
+            XCTAssertEqual(model.snapshot?.sourceImageBound, true)
+            model.label(.reject, scope: .fullProfile)
+            XCTAssertEqual(model.errorCode, "source_image_label_presentation_pending")
+            model.select(original.id)
+            try FileManager.default.removeItem(at: selectedFile)
+            let recovered = JimuOfflineInspectorModel(repository: try ProfileRepository(databasePath: dbPath))
+            recovered.select(original.id)
+            XCTAssertNil(recovered.errorCode)
+            XCTAssertEqual(recovered.sourceFrame?.record.frameSHA256, hash)
+            XCTAssertEqual(recovered.feedback.map(\.id), [oldLabel.id])
+            XCTAssertEqual(recovered.feedback.first?.basis.presentationKind, "TEXT_EVIDENCE_ONLY_V1")
+            XCTAssertEqual(recovered.snapshot?.observation.rawData, original.observation.rawData)
+            XCTAssertEqual(recovered.snapshot?.report.enabledActions, [])
+            try Self.render(model: recovered, name: "06-bound-source-image.png", height: 900)
+            recovered.deleteSelected()
+            XCTAssertNil(recovered.errorCode)
+            XCTAssertNil(recovered.sourceFrame)
+            XCTAssertTrue(recovered.observations.isEmpty)
         }
     }
 

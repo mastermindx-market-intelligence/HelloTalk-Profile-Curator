@@ -665,6 +665,7 @@ public final class ProfileRepository: @unchecked Sendable {
     public func deleteAll(fileManager: FileManager = .default) throws {
         let paths = try databaseQueue.read { try String.fetchAll($0, sql: "SELECT file_path FROM media") }
         try databaseQueue.write { database in
+            try removeJimuSourceMedia(database: database)
             try database.execute(sql: "DELETE FROM profile_observations")
             try database.execute(sql: "DELETE FROM analysis_jobs")
             try database.execute(sql: "DELETE FROM analysis_runs")
@@ -869,6 +870,9 @@ public final class ProfileRepository: @unchecked Sendable {
         }
         migrator.registerMigration("v6-jimu-immutable-inspector") { database in
             try JimuInspectorSchema.install(in: database)
+        }
+        migrator.registerMigration("v7-jimu-source-media") { database in
+            try JimuSourceMediaSchema.install(in: database)
         }
         return migrator
     }

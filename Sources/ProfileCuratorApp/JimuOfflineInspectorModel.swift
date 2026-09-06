@@ -12,6 +12,7 @@ final class JimuOfflineInspectorModel: ObservableObject {
     @Published private(set) var errorCode: String?
     @Published private(set) var notice = "Import an authorized offline observation to begin."
     @Published private(set) var offset = 0
+    @Published private(set) var sourceFrame: JimuSourceFrame?
     private let repository: ProfileRepository?
     private let policyURL: URL?
 
@@ -35,13 +36,14 @@ final class JimuOfflineInspectorModel: ObservableObject {
     }
 
     func select(_ id: String?) {
-        snapshot = nil; comparison = nil; feedback = []
+        snapshot = nil; comparison = nil; feedback = []; sourceFrame = nil
         guard let id else { return }
         perform {
             let repository = try requiredRepository()
             let value = try repository.jimuSnapshot(id: id, policy: policy)
             let labels = try repository.jimuFeedback(observationID: id)
             snapshot = value; feedback = labels
+            sourceFrame = try requiredMediaStore().jimuSourceFrame(snapshot: value, policy: policy)
             notice = "Stored observation loaded. Original evidence and \(value.corrections.count) correction(s) preserved."
         }
     }
@@ -67,7 +69,8 @@ final class JimuOfflineInspectorModel: ObservableObject {
             observations = try requiredRepository().jimuObservations()
             snapshot = try requiredRepository().jimuSnapshot(id: result.id, policy: policy)
             feedback = try requiredRepository().jimuFeedback(observationID: result.id)
-            comparison = nil
+            comparison = nil; sourceFrame = nil
+            if let snapshot { sourceFrame = try requiredMediaStore().jimuSourceFrame(snapshot: snapshot, policy: policy) }
             notice = "Observation stored. Original bytes are immutable; no actions were enabled."
         }
     }
@@ -90,7 +93,7 @@ final class JimuOfflineInspectorModel: ObservableObject {
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: policyURL.path)
             policy = candidate
             let selected = snapshot?.id
-            snapshot = nil; comparison = nil; feedback = []
+            snapshot = nil; comparison = nil; feedback = []; sourceFrame = nil
             if let selected { select(selected) }
             notice = "Local inspection policy loaded. Live engagement remains disabled."
         }
@@ -135,6 +138,29 @@ final class JimuOfflineInspectorModel: ObservableObject {
             notice = "Observation and its correction/comparison feedback were deleted."
         }
     }
+    func importSourceFile(_ url: URL) {
+        perform {
+            guard let snapshot else { throw JimuReplayError(code: "observation_not_selected") }
+            guard snapshot.preferenceLabelsAllowed else { throw JimuReplayError(code: "adult_evidence_required") }
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+            let data = try MediaStore.readJimuSourceFile(url)
+            let media = try requiredMediaStore()
+            _ = try media.bindJimuSourceFrame(data, snapshot: snapshot, policy: policy)
+            let refreshed = try requiredRepository().jimuSnapshot(id: snapshot.id, policy: policy)
+            self.snapshot = refreshed
+            sourceFrame = try media.jimuSourceFrame(snapshot: refreshed, policy: policy)
+            notice = "Source bytes verified and stored locally. Capture origin and photo-only calibration remain unverified."
+        }
+    }
+
+
+    private func requiredMediaStore() throws -> MediaStore {
+        let repository = try requiredRepository()
+        let root = URL(fileURLWithPath: repository.databasePath).deletingLastPathComponent().appendingPathComponent("media")
+        return try MediaStore(rootURL: root, repository: repository)
+    }
+
     private func requiredRepository() throws -> ProfileRepository {
         guard let repository else { throw JimuReplayError(code: "database_unavailable") }
         return repository
