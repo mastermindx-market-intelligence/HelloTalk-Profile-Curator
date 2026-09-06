@@ -23,8 +23,8 @@ Viewport uses pixel dimensions, explicit scale/insets/rotation and top-left coor
 
 The published ProfileObservation JSON schema is the accepted illustrative schema; the W0 Swift decoder adds semantic reference and missingness checks. W0's synthetic CLI does not yet consume/authenticate full raw envelopes. Therefore raw-envelope conformance remains BUILT_NOT_PROVEN only after a producer and consumer actually exist, and is currently SPEC_ONLY.
 
-## W2 release-to-build condition
+## W2 build and acceptance boundaries
 
-Use an exact-version synthetic envelope fixture, matching ProfileObservation and a checksum manifest accepted by the W1 consumer and W2 producer contract tests. Fixture-only Android work may run on the team's own synthetic test application. Installed target-app/package/version/account/device/rights evidence is required separately for actual Jimu observation/navigation proof. No PASS, RIGHT, Note, Instant or purchase is authorized by this contract or by W2.
+W2 build may start against this agreed v1 boundary in parallel with W1; it does not wait for completion of the native inspector. W1 and W2 must consume one exact-version synthetic envelope/ProfileObservation fixture and checksum manifest. Passing both consumer and producer conformance tests is an acceptance gate, not a circular prerequisite for starting either implementation. Fixture-only Android work may run on the team's own synthetic test application. Installed target-app/package/version/account/device/rights evidence is required separately for actual Jimu observation/navigation proof. No PASS, RIGHT, Note, Instant or purchase is authorized by this contract or by W2.
 
 W1 owns canonical persistence and field projections. W2 owns Android sensing and its contract tests, not an alternate database or policy model. Incompatible evidence requires a bounded contract correction with explicit versioning, not a parallel schema. Return conformance results and concrete missing device facts; do not hold the offline inspector behind unavailable physical hardware.
