@@ -333,7 +333,8 @@ public final class ProfileRepository: @unchecked Sendable {
     private static let defaultRepositoryLock = NSLock()
 
     public let databasePath: String
-    private let databaseQueue: DatabaseQueue
+    // Internal access for bounded repository extensions; one database/migration owner.
+    let databaseQueue: DatabaseQueue
 
     public init(databasePath: String) throws {
         self.databasePath = databasePath
@@ -664,6 +665,8 @@ public final class ProfileRepository: @unchecked Sendable {
     public func deleteAll(fileManager: FileManager = .default) throws {
         let paths = try databaseQueue.read { try String.fetchAll($0, sql: "SELECT file_path FROM media") }
         try databaseQueue.write { database in
+            try removeJimuSourceMedia(database: database)
+            try database.execute(sql: "DELETE FROM profile_observations")
             try database.execute(sql: "DELETE FROM analysis_jobs")
             try database.execute(sql: "DELETE FROM analysis_runs")
             try database.execute(sql: "DELETE FROM media")
@@ -864,6 +867,15 @@ public final class ProfileRepository: @unchecked Sendable {
             try database.alter(table: "profiles") { table in
                 table.add(column: "has_visible_tattoo", .boolean).notNull().defaults(to: false)
             }
+        }
+        migrator.registerMigration("v6-jimu-immutable-inspector") { database in
+            try JimuInspectorSchema.install(in: database)
+        }
+        migrator.registerMigration("v7-jimu-source-media") { database in
+            try JimuSourceMediaSchema.install(in: database)
+        }
+        migrator.registerMigration("v8-jimu-photo-calibration") { database in
+            try JimuPhotoSchema.install(in: database)
         }
         return migrator
     }
