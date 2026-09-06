@@ -30,7 +30,7 @@ The local profile-evidence buttons record manual approve/reject labels. Comparin
 
 ## Important limitation: text evidence is not visual calibration
 
-The optional local source-image increment now binds matching frame bytes through the existing MediaStore; see [SOURCE_IMAGE_INSPECTION.md](SOURCE_IMAGE_INSPECTION.md). It does not authenticate capture origin or display isolated photo crops. Existing feedback bases remain `TEXT_EVIDENCE_ONLY_V1` and `modelScoresVisible=false`. New feedback on source-image-bound observations is held until an image-specific presentation contract is implemented. **Visual-only feedback is refused**, not approximated from profile text. A later training consumer must filter by compatible presentation kind and scope; it must not mix these text-only records into visual training.
+The source-image path binds matching frame bytes through the existing MediaStore; see [SOURCE_IMAGE_INSPECTION.md](SOURCE_IMAGE_INSPECTION.md). The dedicated [PHOTO_CALIBRATION.md](PHOTO_CALIBRATION.md) path now prepares human-confirmed photo regions and captures image-bound visual-only absolute/pairwise labels. Existing text-only bases remain `TEXT_EVIDENCE_ONLY_V1`; visual bases are `HUMAN_CONFIRMED_PHOTO_ONLY_V1`. Image-bound full-profile/action-context labels remain held until their combined presentation contract exists. Never mix text-only labels into visual training or treat local byte checks as capture-origin authentication.
 
 Profile references are inspectable declarations, not authenticated sensor-envelope/asset receipts. Overall candidate eligibility and native platform capability remain unverified. No model, embedding, trained ranking head, device adapter, Note generator or executor is added.
 
@@ -46,4 +46,4 @@ The dedicated W1 workflow runs on the exact source branch with read-only reposit
 
 ## Continuation
 
-Local source-byte binding and preview are implemented. The next W1 capability is isolated visual presentation and scope-correct image-bound visual labels, preserving these immutable records and the same database. Shared raw-envelope/asset conformance with W2, independent review and owner-Mac proof remain separate acceptance work. W0 native rights/device gaps must not stall this offline path. No live engagement is authorized by this implementation.
+Local source-byte inspection and the dedicated photo-only labeling workflow are implemented. The next W1 capability is combined image/text full-profile and separately contextual action labeling, preserving all historical scopes. Independent review, installed-app interaction/full-process restart, and shared W2 envelope/asset conformance remain separate gates. W0 native rights/device gaps must not stall this offline path. No live engagement is authorized by this implementation.

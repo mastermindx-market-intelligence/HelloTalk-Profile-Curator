@@ -13,6 +13,17 @@ final class JimuOfflineInspectorModel: ObservableObject {
     @Published private(set) var notice = "Import an authorized offline observation to begin."
     @Published private(set) var offset = 0
     @Published private(set) var sourceFrame: JimuSourceFrame?
+    @Published private(set) var photoCrop: JimuPhotoCrop?
+    @Published private(set) var photoMode = false
+    @Published private(set) var photoLeft: JimuPhotoPresentation?
+    @Published private(set) var photoRight: JimuPhotoPresentation?
+    @Published private(set) var photoSubmissionID: String?
+    @Published private(set) var photoProgress = ""
+    private var shownProfileIDs = Set<String>()
+    private var photoDeck: [String] = []
+    private var photoIndex = 0
+    private var photoPaired = false
+    private var photoSupersedesID: String?
     private let repository: ProfileRepository?
     private let policyURL: URL?
 
@@ -36,13 +47,15 @@ final class JimuOfflineInspectorModel: ObservableObject {
     }
 
     func select(_ id: String?) {
-        snapshot = nil; comparison = nil; feedback = []; sourceFrame = nil
+        snapshot = nil; comparison = nil; feedback = []; sourceFrame = nil; photoCrop = nil
         guard let id else { return }
         perform {
             let repository = try requiredRepository()
             let value = try repository.jimuSnapshot(id: id, policy: policy)
             let labels = try repository.jimuFeedback(observationID: id)
             snapshot = value; feedback = labels
+            photoCrop = try repository.jimuPhotoCrops(observationID: id).last
+            shownProfileIDs.insert(id)
             sourceFrame = try requiredMediaStore().jimuSourceFrame(snapshot: value, policy: policy)
             notice = "Stored observation loaded. Original evidence and \(value.corrections.count) correction(s) preserved."
         }
@@ -50,7 +63,7 @@ final class JimuOfflineInspectorModel: ObservableObject {
     func compare(with id: String?) {
         comparison = nil
         guard let id, id != snapshot?.id else { return }
-        perform { comparison = try requiredRepository().jimuSnapshot(id: id, policy: policy) }
+        perform { comparison = try requiredRepository().jimuSnapshot(id: id, policy: policy); shownProfileIDs.insert(id) }
     }
     func reload() {
         perform { observations = try requiredRepository().jimuObservations(offset: offset) }
@@ -71,6 +84,8 @@ final class JimuOfflineInspectorModel: ObservableObject {
             feedback = try requiredRepository().jimuFeedback(observationID: result.id)
             comparison = nil; sourceFrame = nil
             if let snapshot { sourceFrame = try requiredMediaStore().jimuSourceFrame(snapshot: snapshot, policy: policy) }
+            photoCrop = try requiredRepository().jimuPhotoCrops(observationID: result.id).last
+            shownProfileIDs.insert(result.id)
             notice = "Observation stored. Original bytes are immutable; no actions were enabled."
         }
     }
@@ -92,6 +107,9 @@ final class JimuOfflineInspectorModel: ObservableObject {
             try encoded.write(to: policyURL, options: [.atomic])
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: policyURL.path)
             policy = candidate
+            photoLeft = nil; photoRight = nil; photoSubmissionID = nil
+            photoSupersedesID = nil; photoDeck = []; photoIndex = 0
+            photoProgress = "Policy changed. Exit and start a new calibration session."
             let selected = snapshot?.id
             snapshot = nil; comparison = nil; feedback = []; sourceFrame = nil
             if let selected { select(selected) }
@@ -155,6 +173,85 @@ final class JimuOfflineInspectorModel: ObservableObject {
     }
 
 
+    func savePhotoCrop(_ rect: JimuPhotoRect, confirmed: Bool) {
+        perform {
+            guard let snapshot else { throw JimuReplayError(code: "observation_not_selected") }
+            photoCrop = try requiredMediaStore().saveJimuPhotoCrop(snapshot: snapshot, policy: policy,
+                rect: rect, confirmedPhotoOnly: confirmed, expectedCropID: photoCrop?.id)
+            notice = "Photo region saved. Human confirmation is recorded; no visual label or action was created."
+        }
+    }
+    func beginPhotoCalibration(paired: Bool, observationIDs: [String]? = nil) {
+        photoMode = true; photoLeft = nil; photoRight = nil; photoSubmissionID = nil
+        photoSupersedesID = nil; photoIndex = 0; photoPaired = paired
+        perform {
+            let repository = try requiredRepository()
+            if let observationIDs { photoDeck = observationIDs }
+            else {
+                photoDeck = try repository.jimuObservations(limit: 200)
+                    .filter { try !repository.jimuPhotoCrops(observationID: $0.id).isEmpty }.map(\.id).shuffled()
+            }
+            guard Set(photoDeck).count == photoDeck.count else {
+                photoDeck = []
+                throw JimuReplayError(code: "photo_selection_conflict")
+            }
+        }
+        if errorCode == nil { nextPhotoCalibration() }
+    }
+    func nextPhotoCalibration() {
+        guard photoMode else { errorCode = "photo_session_required"; return }
+        photoLeft = nil; photoRight = nil; photoSubmissionID = nil; photoSupersedesID = nil
+        let needed = photoPaired ? 2 : 1
+        guard photoIndex + needed <= photoDeck.count else {
+            errorCode = nil; photoProgress = "No more prepared photos in this session."
+            return
+        }
+        let ids = Array(photoDeck[photoIndex..<(photoIndex + needed)])
+        photoIndex += needed
+        photoProgress = "Photos \(photoIndex - needed + 1)–\(photoIndex) of \(photoDeck.count)"
+        perform { try preparePhotoSelection(ids) }
+    }
+    private func preparePhotoSelection(_ ids: [String]) throws {
+        let repository = try requiredRepository()
+        let media = try requiredMediaStore()
+        let views = try ids.map { id in
+            try media.prepareJimuPhotoPresentation(snapshot: repository.jimuSnapshot(id: id, policy: policy),
+                policy: policy, exposure: shownProfileIDs.contains(id) ? .profileShown : .notShownThisSession)
+        }
+        photoLeft = views.first; photoRight = views.count == 2 ? views[1] : nil
+    }
+    func recordPhotoLabel(_ choice: JimuFeedbackChoice) {
+        perform {
+            guard photoMode, let left = photoLeft else { throw JimuReplayError(code: "photo_session_required") }
+            guard photoSubmissionID == nil else { throw JimuReplayError(code: "photo_judgment_already_recorded") }
+            let label = try requiredMediaStore().recordJimuPhotoFeedback(presentation: left, policy: policy,
+                choice: choice, comparison: photoRight, supersedesID: photoSupersedesID)
+            photoSubmissionID = label.id
+            notice = "Visual preference saved. No profile action was performed."
+        }
+    }
+    func revisePhotoLabel() {
+        guard photoMode, let left = photoLeft, let prior = photoSubmissionID else {
+            errorCode = "photo_judgment_required"; return
+        }
+        let ids = [left.crop.observationID] + (photoRight.map { [$0.crop.observationID] } ?? [])
+        photoLeft = nil; photoRight = nil; photoSubmissionID = nil
+        photoSupersedesID = prior
+        perform { try preparePhotoSelection(ids) }
+    }
+    func beginPhotoRevision(_ label: JimuFeedback) {
+        guard label.scope == .visualOnly else { errorCode = "invalid_feedback_scope"; return }
+        let ids = [label.basis.observationID] + (label.comparison.map { [$0.observationID] } ?? [])
+        beginPhotoCalibration(paired: ids.count == 2, observationIDs: ids)
+        if errorCode == nil { photoSupersedesID = label.id }
+    }
+    func stopPhotoCalibration() {
+        photoMode = false; photoLeft = nil; photoRight = nil
+        photoSubmissionID = nil; photoSupersedesID = nil; photoDeck = []
+        let selected = snapshot?.id
+        if let selected { select(selected) }
+        else { errorCode = nil }
+    }
     private func requiredMediaStore() throws -> MediaStore {
         let repository = try requiredRepository()
         let root = URL(fileURLWithPath: repository.databasePath).deletingLastPathComponent().appendingPathComponent("media")

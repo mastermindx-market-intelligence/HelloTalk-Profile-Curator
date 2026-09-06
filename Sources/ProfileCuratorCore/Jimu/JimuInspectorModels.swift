@@ -68,6 +68,16 @@ public struct JimuFeedbackBasis: Codable, Sendable {
     public let revision: String
     public let presentationKind: String
     public let modelScoresVisible: Bool
+    public let photo: JimuPhotoEvidence?
+
+    init(observationID: String, inputSHA256: String, correctionIDs: [String],
+        policy: JimuReplayPolicy?, revision: String, presentationKind: String,
+        modelScoresVisible: Bool, photo: JimuPhotoEvidence? = nil) {
+        self.observationID = observationID; self.inputSHA256 = inputSHA256
+        self.correctionIDs = correctionIDs; self.policy = policy; self.revision = revision
+        self.presentationKind = presentationKind; self.modelScoresVisible = modelScoresVisible
+        self.photo = photo
+    }
 }
 
 public enum JimuFeedbackScope: String, Codable, CaseIterable, Sendable {

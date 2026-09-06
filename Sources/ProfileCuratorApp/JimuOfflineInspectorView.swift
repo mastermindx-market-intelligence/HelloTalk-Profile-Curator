@@ -16,6 +16,12 @@ struct JimuOfflineInspectorView: View {
     @State private var actionContext = ""
 
     var body: some View {
+        Group {
+            if model.photoMode { JimuPhotoCalibrationView(model: model) }
+            else { inspector }
+        }
+    }
+    private var inspector: some View {
         VStack(spacing: 0) {
             header
             Divider()
@@ -83,6 +89,10 @@ struct JimuOfflineInspectorView: View {
             Spacer()
             Label("OFFLINE", systemImage: "lock.fill").font(.caption.bold()).padding(.horizontal, 11).padding(.vertical, 7)
                 .background(Color.teal.opacity(0.12), in: Capsule()).foregroundStyle(.teal)
+            Menu("Calibrate") {
+                Button("Photo-only approve / reject") { model.beginPhotoCalibration(paired: false) }
+                Button("Photo-only pairwise comparison") { model.beginPhotoCalibration(paired: true) }
+            }.fixedSize()
             Button("Local policy…") { importingPolicy = true }
             Button("Import…") { importing = true }.buttonStyle(.borderedProminent).tint(.teal)
         }.padding(18)
@@ -156,9 +166,9 @@ struct JimuOfflineInspectorView: View {
                     .disabled(!snapshot.preferenceLabelsAllowed || snapshot.sourceImageBound)
             }
             if let source = model.sourceFrame {
-                Image(decorative: source.image, scale: 1)
-                    .resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: 320)
-                    .accessibilityLabel("Locally verified full source image, not isolated calibration")
+                JimuPhotoCropEditor(image: source.image, initial: model.photoCrop?.rect) { rect, confirmed in
+                    model.savePhotoCrop(rect, confirmed: confirmed)
+                }.id(snapshot.id + source.record.frameSHA256)
                 Label("Byte match verified", systemImage: "checkmark.shield")
                     .font(.caption.bold()).foregroundStyle(.teal)
                 Text("\(source.record.width) × \(source.record.height) pixels · \(source.record.byteCount) bytes")
@@ -171,7 +181,7 @@ struct JimuOfflineInspectorView: View {
                 Text("Choose the original local PNG or JPEG matching this observation's declared frame hash. Files are checked before display.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Text("Capture origin remains unverified. A full source frame is not photo-only calibration; new labels on image-bound observations remain paused.")
+            Text("Capture origin remains unverified. Prepare a photo-only region below; use Calibrate for image-bound visual judgments. Profile/action labels remain separate.")
                 .font(.caption).foregroundStyle(.secondary)
         }.padding(16).background(.background, in: RoundedRectangle(cornerRadius: 12))
     }
@@ -232,7 +242,7 @@ struct JimuOfflineInspectorView: View {
                 Button("Approve profile evidence") { model.label(.approve, scope: .fullProfile) }
                 Button("Reject profile evidence") { model.label(.reject, scope: .fullProfile) }
                 Spacer()
-                Label("Visual-only: image evidence unavailable", systemImage: "lock").font(.caption).foregroundStyle(.secondary)
+                Label("Visual-only: use Calibrate", systemImage: "lock").font(.caption).foregroundStyle(.secondary)
             }.disabled(!snapshot.preferenceLabelsAllowed || snapshot.sourceImageBound)
             HStack {
                 Picker("Compare", selection: Binding(get: { model.comparison?.id ?? "" }, set: { model.compare(with: $0.isEmpty ? nil : $0) })) {
@@ -265,7 +275,7 @@ struct JimuOfflineInspectorView: View {
                 }
             }.disabled(!snapshot.preferenceLabelsAllowed || snapshot.sourceImageBound || actionContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             if snapshot.sourceImageBound {
-                Text("New labels paused: this observation now includes an image. Its earlier text-only labels remain intact; isolated visual presentation is the next capability.")
+                Text("New labels paused: this observation now includes an image. Its earlier text-only labels remain intact; use Calibrate for separate photo-only judgments.")
                     .font(.caption).foregroundStyle(.orange)
             }
             if !snapshot.preferenceLabelsAllowed {
@@ -290,9 +300,24 @@ struct JimuOfflineInspectorView: View {
             ForEach(model.feedback) { label in
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(label.scope.rawValue.uppercased()) · \(label.choice.rawValue)").font(.caption.bold())
-                    Text("Text-evidence basis \(label.basis.revision.prefix(12)) · \(label.createdAt.formatted())")
+                    Text("\(label.basis.photo == nil ? "Text-evidence" : "Photo-only") basis \(label.basis.revision.prefix(12)) · \(label.createdAt.formatted())")
                         .font(.caption2).foregroundStyle(.secondary)
                     if let context = label.actionContext { Text(context).font(.caption) }
+                    if let photo = label.basis.photo {
+                        Text("Source \(photo.frameSHA256.prefix(12)) · crop \(photo.cropID.prefix(12)) · pixels \(photo.pixelSHA256.prefix(12))")
+                            .font(.caption2.monospaced()).foregroundStyle(.secondary)
+                        Text("Region: \(photo.rect.x), \(photo.rect.y), \(photo.rect.width) × \(photo.rect.height) · \(photo.contextExposure.rawValue)")
+                            .font(.caption2).foregroundStyle(.secondary)
+                        if let other = label.comparison?.photo {
+                            Text("Comparison crop \(other.cropID.prefix(12)) · pixels \(other.pixelSHA256.prefix(12))")
+                                .font(.caption2.monospaced()).foregroundStyle(.secondary)
+                        }
+                        if label.basis.observationID == snapshot.id &&
+                            !model.feedback.contains(where: { $0.supersedesID == label.id }) {
+                            Button("Revise photo judgment") { model.beginPhotoRevision(label) }
+                                .font(.caption).disabled(!snapshot.preferenceLabelsAllowed)
+                        }
+                    }
                     if label.scope == .fullProfile && label.comparison == nil && label.basis.observationID == snapshot.id &&
                         !model.feedback.contains(where: { $0.supersedesID == label.id }) {
                         Button("Append opposite judgment") {

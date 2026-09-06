@@ -151,7 +151,7 @@ public extension MediaStore {
             return try readBoundJimuFrame(record, snapshot: current)
         }
     }
-    private func checkJimuSourceAdmission(snapshot: JimuInspectorSnapshot, current: JimuInspectorSnapshot) throws {
+    internal func checkJimuSourceAdmission(snapshot: JimuInspectorSnapshot, current: JimuInspectorSnapshot) throws {
         guard snapshot.revision == current.revision else { throw JimuReplayError(code: "stale_presentation") }
         guard current.preferenceLabelsAllowed else { throw JimuReplayError(code: "adult_evidence_required") }
     }
@@ -164,7 +164,7 @@ public extension MediaStore {
             .appendingPathComponent(snapshot.report.frameSHA256 + ".image")
         return try JimuSourceImageIO.checkedPath(candidate, root: rootURL)
     }
-    private func readBoundJimuFrame(_ record: JimuSourceMediaRecord, snapshot: JimuInspectorSnapshot) throws -> JimuSourceFrame {
+    internal func readBoundJimuFrame(_ record: JimuSourceMediaRecord, snapshot: JimuInspectorSnapshot) throws -> JimuSourceFrame {
         let url = try jimuSourceURL(snapshot: snapshot)
         guard record.observationID == snapshot.id, record.frameSHA256 == snapshot.report.frameSHA256,
               record.filePath == url.path else { throw JimuReplayError(code: "source_asset_metadata_mismatch") }

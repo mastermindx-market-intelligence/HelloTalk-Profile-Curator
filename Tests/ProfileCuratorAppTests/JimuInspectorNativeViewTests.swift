@@ -223,3 +223,101 @@ final class JimuInspectorNativeViewTests: XCTestCase {
         XCTAssertGreaterThan(png.count, 10_000, "Native render should contain the actual evidence interface")
     }
 }
+
+extension JimuInspectorNativeViewTests {
+    @MainActor
+    private static func importCalibrationFixture(model: JimuOfflineInspectorModel, root: URL, suffix: String) throws -> String {
+        let context = try XCTUnwrap(CGContext(data: nil, width: 640, height: 400, bitsPerComponent: 8,
+            bytesPerRow: 2560, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(gray: 0.95, alpha: 1)); context.fill(CGRect(x: 0, y: 0, width: 640, height: 400))
+        context.setFillColor(CGColor(red: 0.12, green: suffix == "a" ? 0.38 : 0.25, blue: 0.48, alpha: 1))
+        context.fill(CGRect(x: 160, y: 40, width: 320, height: 320))
+        context.setFillColor(CGColor(red: 0.85, green: 0.64, blue: 0.25, alpha: 1))
+        if suffix == "a" { context.fillEllipse(in: CGRect(x: 230, y: 120, width: 170, height: 170)) }
+        else { context.fill(CGRect(x: 230, y: 120, width: 170, height: 170)) }
+        let bitmap = NSBitmapImageRep(cgImage: try XCTUnwrap(context.makeImage()))
+        let bytes = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+        let hash = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        let file = root.appendingPathComponent("synthetic-photo-\(suffix).png"); try bytes.write(to: file)
+        let sourceRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        var document = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: sourceRoot.appendingPathComponent("fixtures/jimu/synthetic/profile.json"))) as? [String: Any])
+        let id = "synthetic-calibration-\(suffix)"
+        document["observation_id"] = id; document["encounter_id"] = id; document["frame_sha256"] = hash
+        model.importObservation(try JSONSerialization.data(withJSONObject: document))
+        model.importSourceFile(file)
+        XCTAssertNil(model.errorCode)
+        return id
+    }
+    func testNativePhotoCropAndAbsoluteJudgmentRecoverAfterRestart() async throws {
+        try await MainActor.run {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let path = root.appendingPathComponent("curator.sqlite").path
+            let model = JimuOfflineInspectorModel(repository: try ProfileRepository(databasePath: path))
+            model.loadPolicy(try JSONEncoder().encode(JimuReplayPolicy(policyID: "synthetic-calibration", minimumAge: 25, maximumAge: 40, allowedRightsScopeIDs: [])))
+            let id = try Self.importCalibrationFixture(model: model, root: root, suffix: "a")
+            model.savePhotoCrop(JimuPhotoRect(x: 160, y: 40, width: 320, height: 320), confirmed: true)
+            XCTAssertNil(model.errorCode)
+            XCTAssertNotNil(model.photoCrop)
+            try Self.render(model: model, name: "07-photo-crop-preparation.png", height: 900)
+            model.beginPhotoCalibration(paired: false, observationIDs: [id])
+            XCTAssertTrue(model.photoMode); XCTAssertNil(model.errorCode)
+            let shown = try XCTUnwrap(model.photoLeft)
+            XCTAssertNil(model.photoRight); XCTAssertEqual(shown.image.width, 320)
+            XCTAssertEqual(shown.basis.photo?.contextExposure, .profileShown)
+            try Self.render(model: model, name: "08-photo-only-absolute.png", height: 900)
+            model.recordPhotoLabel(.approve)
+            XCTAssertNil(model.errorCode); XCTAssertNotNil(model.photoSubmissionID)
+            model.revisePhotoLabel(); model.recordPhotoLabel(.reject)
+            XCTAssertNil(model.errorCode)
+            model.stopPhotoCalibration(); XCTAssertFalse(model.photoMode); XCTAssertNil(model.photoLeft)
+            let restarted = JimuOfflineInspectorModel(repository: try ProfileRepository(databasePath: path))
+            restarted.select(id)
+            XCTAssertEqual(restarted.feedback.map(\.choice), [.approve, .reject])
+            XCTAssertEqual(restarted.feedback.last?.supersedesID, restarted.feedback.first?.id)
+            XCTAssertEqual(restarted.feedback.first?.basis.photo?.cropID, shown.crop.id)
+            XCTAssertTrue(restarted.feedback.allSatisfy { $0.scope == .visualOnly && $0.actionContext == nil })
+            try Self.render(model: restarted, name: "10-photo-label-history.png", height: 900, scrollToBottom: true)
+            restarted.beginPhotoCalibration(paired: false, observationIDs: [id])
+            XCTAssertEqual(restarted.photoLeft?.crop.pixelSHA256, shown.crop.pixelSHA256)
+            restarted.stopPhotoCalibration()
+            restarted.recordPhotoLabel(.approve)
+            XCTAssertEqual(restarted.errorCode, "photo_session_required")
+            XCTAssertEqual(try ProfileRepository(databasePath: path).jimuFeedback(observationID: id).count, 2)
+        }
+    }
+    func testNativePairwisePhotoOnlyJudgmentAndSkipNeverEnableActions() async throws {
+        try await MainActor.run {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let repo = try ProfileRepository(databasePath: root.appendingPathComponent("curator.sqlite").path)
+            let model = JimuOfflineInspectorModel(repository: repo)
+            model.loadPolicy(try JSONEncoder().encode(JimuReplayPolicy(policyID: "synthetic-calibration", minimumAge: 25, maximumAge: 40, allowedRightsScopeIDs: [])))
+            var ids: [String] = []
+            for suffix in ["a", "b"] {
+                ids.append(try Self.importCalibrationFixture(model: model, root: root, suffix: suffix))
+                model.savePhotoCrop(JimuPhotoRect(x: 160, y: 40, width: 320, height: 320), confirmed: true)
+                XCTAssertNil(model.errorCode)
+            }
+            model.beginPhotoCalibration(paired: true, observationIDs: ids)
+            XCTAssertTrue(model.photoMode); XCTAssertNil(model.errorCode)
+            XCTAssertEqual(model.photoLeft?.crop.observationID, ids[0])
+            XCTAssertEqual(model.photoRight?.crop.observationID, ids[1])
+            try Self.render(model: model, name: "09-photo-only-pairwise.png", height: 900)
+            try Self.render(model: model, name: "11-photo-only-compact.png", height: 720, width: 1050)
+            model.recordPhotoLabel(.neither)
+            XCTAssertNil(model.errorCode)
+            let label = try XCTUnwrap(repo.jimuFeedback(observationID: ids[0]).first)
+            XCTAssertEqual(label.choice, .neither); XCTAssertEqual(label.scope, .visualOnly)
+            XCTAssertEqual(label.comparison?.observationID, ids[1])
+            model.nextPhotoCalibration()
+            XCTAssertNil(model.photoLeft); XCTAssertNil(model.photoRight)
+            XCTAssertTrue(model.photoMode, "Exhaustion must not reveal profile text behind the photo-only view")
+            XCTAssertEqual(try repo.jimuFeedback(observationID: ids[0]).count, 1)
+            XCTAssertEqual(model.snapshot?.report.enabledActions, [])
+            model.stopPhotoCalibration(); XCTAssertFalse(model.photoMode)
+        }
+    }
+}

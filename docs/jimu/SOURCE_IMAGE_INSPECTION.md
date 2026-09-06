@@ -20,6 +20,6 @@ File creation and SQLite commit are not a single atomic transaction. A file left
 
 ## Learning boundary
 
-A full source frame may contain biography, age, and interface text. It is **not** isolated photo-only evidence. Visual-only feedback remains refused. Once an image is bound, new profile/action feedback is also refused with `source_image_label_presentation_pending`, preventing it from being mislabeled as the older `TEXT_EVIDENCE_ONLY_V1` presentation. Earlier text-only judgments remain unchanged and inspectable. Unbound text observations retain their existing feedback workflow.
+A full source frame may contain biography, age, and interface text. It is **not** isolated photo-only evidence. Visual-only feedback is available only through the dedicated human-confirmed crop workflow described in [PHOTO_CALIBRATION.md](PHOTO_CALIBRATION.md). Once an image is bound, new profile/action feedback is also refused with `source_image_label_presentation_pending`, preventing it from being mislabeled as the older `TEXT_EVIDENCE_ONLY_V1` presentation. Earlier text-only judgments remain unchanged and inspectable. Unbound text observations retain their existing feedback workflow.
 
-Next W1 capability: isolated photo presentation with image-bound, scope-correct absolute/pairwise labels. Do not train a visual preference model from the text-only corpus or treat the new source preview as calibration completion.
+Photo-only absolute/pairwise calibration is now a separate implemented path; combined-image/text full-profile and contextual action labeling remain the next W1 step. Do not train a visual preference model from the text-only corpus or treat the new source preview as calibration completion.

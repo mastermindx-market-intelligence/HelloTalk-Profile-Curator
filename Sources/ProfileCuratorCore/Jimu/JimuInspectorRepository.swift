@@ -133,22 +133,27 @@ public extension ProfileRepository {
                 guard other?.observation.platform == current.observation.platform,
                       other?.observation.accountID == current.observation.accountID else { throw JimuReplayError(code: "comparison_namespace_mismatch") }
             }
-            if let supersedesID {
-                guard let oldData = try Data.fetchOne(database, sql: "SELECT payload FROM preference_feedback WHERE id = ?", arguments: [supersedesID]),
-                      let old = try? JimuInspectorCoding.decode(JimuFeedback.self, from: oldData),
-                      old.basis.observationID == current.id, old.scope == scope,
-                      old.comparison?.observationID == other?.id,
-                      try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM preference_feedback WHERE supersedes_id = ?", arguments: [supersedesID]) == 0 else {
-                    throw JimuReplayError(code: "feedback_supersession_conflict")
-                }
-            }
             let feedback = JimuFeedback(id: UUID().uuidString, scope: scope, choice: choice, basis: current.basis,
                 comparison: other?.basis, actionContext: scope == .scarceAction ? context : nil,
                 supersedesID: supersedesID, createdAt: now)
-            try database.execute(sql: "INSERT INTO preference_feedback (id, observation_id, comparison_id, supersedes_id, payload) VALUES (?, ?, ?, ?, ?)",
-                arguments: [feedback.id, current.id, other?.id, supersedesID, try JimuInspectorCoding.encode(feedback)])
+            try Self.insertJimuFeedback(feedback, database: database)
             return feedback
         }
+    }
+
+    internal static func insertJimuFeedback(_ feedback: JimuFeedback, database: Database) throws {
+        if let supersedesID = feedback.supersedesID {
+            guard let oldData = try Data.fetchOne(database, sql: "SELECT payload FROM preference_feedback WHERE id = ?", arguments: [supersedesID]),
+                  let old = try? JimuInspectorCoding.decode(JimuFeedback.self, from: oldData),
+                  old.basis.observationID == feedback.basis.observationID, old.scope == feedback.scope,
+                  old.comparison?.observationID == feedback.comparison?.observationID,
+                  try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM preference_feedback WHERE supersedes_id = ?", arguments: [supersedesID]) == 0 else {
+                throw JimuReplayError(code: "feedback_supersession_conflict")
+            }
+        }
+        try database.execute(sql: "INSERT INTO preference_feedback (id, observation_id, comparison_id, supersedes_id, payload) VALUES (?, ?, ?, ?, ?)",
+            arguments: [feedback.id, feedback.basis.observationID, feedback.comparison?.observationID,
+                feedback.supersedesID, try JimuInspectorCoding.encode(feedback)])
     }
 
     func jimuFeedback(observationID: String) throws -> [JimuFeedback] {

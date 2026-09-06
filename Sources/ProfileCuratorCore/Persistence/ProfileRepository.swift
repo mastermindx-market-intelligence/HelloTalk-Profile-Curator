@@ -874,6 +874,9 @@ public final class ProfileRepository: @unchecked Sendable {
         migrator.registerMigration("v7-jimu-source-media") { database in
             try JimuSourceMediaSchema.install(in: database)
         }
+        migrator.registerMigration("v8-jimu-photo-calibration") { database in
+            try JimuPhotoSchema.install(in: database)
+        }
         return migrator
     }
 }
