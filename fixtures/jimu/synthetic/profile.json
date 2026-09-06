@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0.0",
+  "record_type": "ProfileObservation",
+  "data_classification": "SYNTHETIC_FIXTURE",
+  "observation_id": "obs-synthetic-001",
+  "encounter_id": "enc-synthetic-001",
+  "profile_id": null,
+  "platform": "synthetic",
+  "account_id": "account-synthetic",
+  "device_id": "device-synthetic",
+  "device_boot_id": "boot-001",
+  "session_id": "session-synthetic",
+  "lease_epoch": 1,
+  "app_version": "synthetic-app-1.0",
+  "adapter_manifest_id": "synthetic-adapter-v1",
+  "observed_at": "2026-09-06T12:00:00Z",
+  "frame_sha256": "7850e70ded97157be62fa6d1ebd5f34f521eb84e0236ce5c120afaa121b83249",
+  "source_envelope_ids": [
+    "env-synthetic-001"
+  ],
+  "fields": [
+    {
+      "field_id": "field-age-001",
+      "name": "displayed_age",
+      "state": "PRESENT",
+      "value": 29,
+      "source_kind": "PLATFORM_DISPLAY",
+      "source_observation_ids": [
+        "env-synthetic-001"
+      ],
+      "raw_text": "29",
+      "extractor_version": "synthetic-extractor-v1",
+      "extraction_confidence": 1.0
+    },
+    {
+      "field_id": "field-posts-001",
+      "name": "post_count",
+      "state": "NOT_OBSERVED",
+      "value": null,
+      "source_kind": "PLATFORM_DISPLAY",
+      "source_observation_ids": [
+        "env-synthetic-001"
+      ],
+      "raw_text": null,
+      "extractor_version": "synthetic-extractor-v1",
+      "extraction_confidence": null
+    },
+    {
+      "field_id": "field-bio-001",
+      "name": "bio",
+      "state": "PRESENT",
+      "value": "I enjoy hiking and live music.",
+      "source_kind": "PLATFORM_DISPLAY",
+      "source_observation_ids": [
+        "env-synthetic-001"
+      ],
+      "raw_text": "I enjoy hiking and live music.",
+      "extractor_version": "synthetic-extractor-v1",
+      "extraction_confidence": 1.0
+    }
+  ],
+  "eligibility": {
+    "status": "ACCEPTED_ADULT_DISPLAY",
+    "displayed_age": 29,
+    "source_field_ids": [
+      "field-age-001"
+    ],
+    "rule_version": "adult-display-v1"
+  },
+  "rights_scope_id": "synthetic-test-only",
+  "reachability": {
+    "state": "CURRENT_CARD",
+    "revisit_contract_id": null,
+    "reachable_until": null
+  }
+}

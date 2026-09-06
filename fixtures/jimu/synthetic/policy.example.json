@@ -1,0 +1,6 @@
+{
+  "policy_id": "synthetic-example-not-owner-policy",
+  "minimum_age": 18,
+  "maximum_age": 65,
+  "allowed_rights_scope_ids": []
+}
