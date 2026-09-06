@@ -26,6 +26,10 @@ let package = Package(
             dependencies: ["ProfileCuratorCore"]
         ),
         .testTarget(
+            name: "ProfileCuratorAppTests",
+            dependencies: ["ProfileCuratorApp", "ProfileCuratorCore"]
+        ),
+        .testTarget(
             name: "ProfileCuratorCoreTests",
             dependencies: ["ProfileCuratorCore"]
         )
