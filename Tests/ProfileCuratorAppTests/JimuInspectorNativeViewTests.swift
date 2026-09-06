@@ -5,6 +5,15 @@ import XCTest
 import ProfileCuratorCore
 @testable import ProfileCuratorApp
 
+// Test-only host: render the real native view at the requested size even when
+// the CI virtual display is smaller. Production windows keep standard AppKit constraints.
+@MainActor
+private final class JimuProofWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
+}
+
 final class JimuInspectorNativeViewTests: XCTestCase {
     func testNativeConsumerImportsCorrectsAndRecoversHistoryAfterRestart() async throws {
         try await MainActor.run {
@@ -117,7 +126,7 @@ final class JimuInspectorNativeViewTests: XCTestCase {
         view.sizingOptions = []
         view.autoresizingMask = [.width, .height]
         let rect = NSRect(x: 0, y: 0, width: width, height: height)
-        let window = NSWindow(contentRect: rect, styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        let window = JimuProofWindow(contentRect: rect, styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         window.appearance = NSAppearance(named: .aqua)
         window.contentView = view
         window.setContentSize(rect.size)
