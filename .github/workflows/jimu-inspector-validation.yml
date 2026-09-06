@@ -1,0 +1,55 @@
+name: Jimu W1 native inspector validation
+
+on:
+  push:
+    branches: [sol/jimu-w1-offline-inspector-20260906]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jimu-w1-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-inspector:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Record source and native toolchain
+        run: |
+          git rev-parse HEAD
+          sw_vers
+          xcodebuild -version
+          swift --version
+      - name: Baseline regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift test --jobs 2 --skip JimuInspector 2>&1 | tee "$RUNNER_TEMP/w1-baseline.log"
+      - name: W1 behavior tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift test --jobs 2 --filter JimuInspector 2>&1 | tee "$RUNNER_TEMP/w1-tests.log"
+      - name: Build native application
+        run: swift build --product ProfileCurator --jobs 2
+      - name: Preserve exact public-source test reproduction bundle
+        if: always()
+        run: git bundle create "$RUNNER_TEMP/jimu-w1-source.bundle" HEAD
+      - name: Upload bounded test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jimu-w1-evidence-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/w1-baseline.log
+            ${{ runner.temp }}/w1-tests.log
+            ${{ runner.temp }}/jimu-w1-source.bundle
+          retention-days: 3
+          if-no-files-found: error
