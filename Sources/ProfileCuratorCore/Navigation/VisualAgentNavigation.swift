@@ -150,6 +150,11 @@ public struct VisualAgentSafetyGate: Sendable {
         case .wait:
             return .approved(.wait)
         case .tapElement:
+            // A plausible OCR tab is not proof that we are still on a profile.
+            // Never navigate an ad, viewer, popup, or unrecognized surface.
+            guard Self.tabScreens.contains(frame.screenKind) else {
+                return .rejected(.unsupportedAction)
+            }
             guard proposal.confidence >= 0.85 else { return .rejected(.lowConfidence) }
             guard let id = proposal.elementID, !id.isEmpty,
                   frame.elements.filter({ $0.id == id }).count == 1,
@@ -184,9 +189,11 @@ public struct VisualAgentSafetyGate: Sendable {
             guard geometry.isAllowed else { return .rejected(.excludedRegion) }
             return .approved(.tap(action, expectation))
         case .scrollUp, .scrollDown:
+            guard Self.scrollScreens.contains(frame.screenKind) else {
+                return .rejected(.unsupportedAction)
+            }
             guard proposal.confidence >= 0.7 else { return .rejected(.lowConfidence) }
-            guard frame.screenKind != "unknown",
-                  proposal.expectation?.kind == .frameChanged else {
+            guard proposal.expectation?.kind == .frameChanged else {
                 return .rejected(.missingSemanticExpectation)
             }
             // Scrolling uses the existing bounded, excluded-zone-aware input executor in future wiring.
@@ -197,6 +204,12 @@ public struct VisualAgentSafetyGate: Sendable {
             return .approved(.scroll(lines: proposal.action == .scrollUp ? 5 : -5, point: point))
         }
     }
+
+    private static let tabScreens: Set<String> = [
+        "profileTop", "profilePersonalInfo", "suggestedProfilesGallery", "momentsFeed"
+    ]
+
+    private static let scrollScreens: Set<String> = tabScreens.union(["connectFeed", "customSearch"])
 
     private static let allowedNavigationKinds: Set<PlannedActionKind> = [
         .back, .closeViewer, .selectAboutMe, .selectMoments, .openAvatar,
@@ -319,6 +332,8 @@ public actor VisualAgentSession {
     }
 
     private static func signature(_ proposal: VisualAgentProposal) -> String {
-        "\(proposal.frameID)|\(proposal.action.rawValue)|\(proposal.elementID ?? "")"
+        // Different screenshot bytes may be only a blinking cursor or animation.
+        // Failed semantic actions cannot be retried just by changing the frame ID.
+        "\(proposal.action.rawValue)|\(proposal.elementID ?? "")|\(proposal.expectation?.kind.rawValue ?? "")|\(proposal.expectation?.value ?? "")"
     }
 }
