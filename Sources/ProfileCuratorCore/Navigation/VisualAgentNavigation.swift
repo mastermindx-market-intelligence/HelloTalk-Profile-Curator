@@ -18,7 +18,7 @@ public enum VisualAgentElementRole: String, Codable, Sendable {
     case unknown
 }
 
-public struct VisualAgentElement: Sendable {
+public struct VisualAgentElement: Codable, Sendable {
     public let id: String
     public let label: String
     public let role: VisualAgentElementRole
@@ -35,7 +35,7 @@ public struct VisualAgentElement: Sendable {
     }
 }
 
-public struct VisualAgentFrame: Sendable {
+public struct VisualAgentFrame: Codable, Sendable {
     public let id: String
     /// OCR/layout fingerprint that excludes known rotating badges; not a pixel hash.
     public let stableObservationID: String?
@@ -165,12 +165,16 @@ public struct VisualAgentSafetyGate: Sendable {
                   let element = frame.elements.first(where: { $0.id == id }) else {
                 return .rejected(.unsafeElement)
             }
-            guard element.role == .navigation || element.role == .dismiss,
+            guard element.role == .navigation,
                   !element.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 return .rejected(.unsafeElement)
             }
             guard !Self.isForbiddenControl(element.label) else { return .rejected(.forbiddenLabel) }
-            guard Self.allowedNavigationKinds.contains(element.actionKind) else { return .rejected(.unsupportedAction) }
+            // Only the two OCR-grounded tab IDs are currently trusted. Do not
+            // let model text promote arbitrary profile/photo/social actions.
+            guard Self.expectedTabScreen(for: element) != nil else {
+                return .rejected(.unsupportedAction)
+            }
             guard element.bounds.isValidNormalizedRect,
                   element.bounds.width >= 0.015, element.bounds.height >= 0.015 else {
                 return .rejected(.invalidGeometry)
@@ -179,7 +183,7 @@ public struct VisualAgentSafetyGate: Sendable {
                 return .rejected(.excludedRegion)
             }
             guard let expectation = proposal.expectation,
-                  Self.validTapExpectation(expectation, before: frame) else {
+                  Self.validTapExpectation(expectation, for: element, before: frame) else {
                 return .rejected(.missingSemanticExpectation)
             }
             let action = PlannedAction(kind: element.actionKind,
@@ -197,6 +201,9 @@ public struct VisualAgentSafetyGate: Sendable {
                 return .rejected(.unsupportedAction)
             }
             guard proposal.confidence >= 0.7 else { return .rejected(.lowConfidence) }
+            guard let stableID = frame.stableObservationID, !stableID.isEmpty else {
+                return .rejected(.missingSemanticExpectation)
+            }
             guard proposal.expectation?.kind == .frameChanged else {
                 return .rejected(.missingSemanticExpectation)
             }
@@ -215,11 +222,15 @@ public struct VisualAgentSafetyGate: Sendable {
 
     private static let scrollScreens: Set<String> = tabScreens.union(["connectFeed", "customSearch"])
 
-    private static let allowedNavigationKinds: Set<PlannedActionKind> = [
-        .back, .closeViewer, .selectAboutMe, .selectMoments, .openAvatar,
-        .openRecommendationCard, .openCustomSearchResult, .openMomentThumbnail,
-        .refreshCustomSearch, .showViewerChrome
-    ]
+    /// Fixed tab mapping is an allowlist, not a deterministic navigation script.
+    /// AI chooses the next tab or a scroll; no other controls are admitted yet.
+    private static func expectedTabScreen(for element: VisualAgentElement) -> String? {
+        if element.id == "tab-about-me" && element.label == "About Me" &&
+           element.actionKind == .selectAboutMe { return "profilePersonalInfo" }
+        if element.id == "tab-moments" && element.label == "Moments" &&
+           element.actionKind == .selectMoments { return "momentsFeed" }
+        return nil
+    }
 
     public static func isForbiddenControl(_ label: String) -> Bool {
         let pattern = #"(?i)(?:^|[^a-z])(?:say\s+hi|follow|like|gift|message|chat|comment|share|download|send|buy|subscribe|purchase|shop|payment|block|report)(?:$|[^a-z])"#
@@ -235,18 +246,20 @@ public struct VisualAgentSafetyGate: Sendable {
     }
 
     private static func validTapExpectation(_ expected: VisualAgentExpectation,
+                                            for element: VisualAgentElement,
                                             before: VisualAgentFrame) -> Bool {
-        guard let value = expected.value?.trimmingCharacters(in: .whitespacesAndNewlines),
+        guard let target = expectedTabScreen(for: element),
+              let value = expected.value?.trimmingCharacters(in: .whitespacesAndNewlines),
               !value.isEmpty, value.count <= 100 else { return false }
         switch expected.kind {
         case .screenKind:
-            return value != "unknown" && value != before.screenKind
+            return value == target && target != before.screenKind
         case .textAppeared:
-            return !contains(value, in: before.visibleText)
-        case .textDisappeared:
-            return contains(value, in: before.visibleText)
-        case .frameChanged:
-            return false // A hash change alone never proves that a tap went to the right screen.
+            let anchors: Set<String> = target == "profilePersonalInfo"
+                ? ["Personal Info"] : ["Posts", "No moments", "Album"]
+            return anchors.contains(value) && !contains(value, in: before.visibleText)
+        case .textDisappeared, .frameChanged:
+            return false // Disappearance or a hash change cannot prove a tab arrived.
         }
     }
 }
@@ -310,11 +323,9 @@ public actor VisualAgentSession {
                 switch (before.stableObservationID, after.stableObservationID) {
                 case (.some(let oldID), .some(let newID)):
                     passed = before.screenKind != after.screenKind || (!oldID.isEmpty && oldID != newID)
-                case (nil, nil):
-                    // Synthetic fixtures without an observation builder can
-                    // still test text-based changes; native frames provide IDs.
-                    passed = before.screenKind != after.screenKind || before.visibleText != after.visibleText
                 default:
+                    // No reliable OCR-layout fingerprint: do not infer progress
+                    // from animations, a rotating badge, or other text changes.
                     passed = false
                 }
             case .screenKind:
@@ -331,6 +342,13 @@ public actor VisualAgentSession {
                 }
             }
         }
+        if proposal.action == .tapElement,
+           let id = proposal.elementID,
+           let element = before.elements.first(where: { $0.id == id }),
+           let requiredTarget = Self.expectedTabScreen(for: element.actionKind) {
+            // Even a coincidental text match cannot validate a popup/ad/viewer.
+            passed = passed && after.screenKind == requiredTarget
+        }
         if passed { failures = 0; failedSignature = nil; return .verified }
         failures += 1
         failedSignature = Self.signature(proposal)
@@ -343,6 +361,14 @@ public actor VisualAgentSession {
     /// Deliberate user action only; never automatically clear the pause/stop gate.
     public func resetByUser() {
         stopped = false; pending = nil; failures = 0; waits = 0; failedSignature = nil
+    }
+
+    private static func expectedTabScreen(for action: PlannedActionKind) -> String? {
+        switch action {
+        case .selectAboutMe: "profilePersonalInfo"
+        case .selectMoments: "momentsFeed"
+        default: nil
+        }
     }
 
     private static func signature(_ proposal: VisualAgentProposal) -> String {
