@@ -25,6 +25,12 @@ func text(_ value: String, x: CGFloat, top: CGFloat, fontSize: CGFloat = 16,
                              withAttributes: attributes)
 }
 
+let scenario = CommandLine.arguments.dropFirst().dropFirst().first ?? "profile"
+guard ["profile", "advertisement", "unknown"].contains(scenario) else {
+    fatalError("Only profile, advertisement and unknown synthetic scenarios are supported")
+}
+
+if scenario == "profile" {
 panel(x: 0, top: 0, width: 420, height: 932, color: .white)
 panel(x: 0, top: 0, width: 420, height: 82, color: NSColor(calibratedRed: 0.12, green: 0.32, blue: 0.59, alpha: 1))
 text("SYNTHETIC TEST SCREEN", x: 24, top: 24, fontSize: 19, weight: .bold, color: .white)
@@ -67,6 +73,22 @@ panel(x: 299, top: 867, width: 109, height: 45,
 text("Follow", x: 32, top: 877, fontSize: 16)
 text("Say Hi", x: 180, top: 877, fontSize: 16)
 text("Gift", x: 335, top: 877, fontSize: 16)
+
+} else if scenario == "advertisement" {
+    panel(x: 0, top: 0, width: 420, height: 932, color: .white)
+    panel(x: 0, top: 0, width: 420, height: 82,
+          color: NSColor(calibratedRed: 0.12, green: 0.32, blue: 0.59, alpha: 1))
+    text("SYNTHETIC ADVERTISEMENT", x: 22, top: 25, fontSize: 18, weight: .bold, color: .white)
+    text("Sponsored", x: 85, top: 275, fontSize: 34, weight: .bold)
+    text("Advertisement", x: 85, top: 344, fontSize: 26, weight: .semibold)
+    text("Install", x: 146, top: 432, fontSize: 28, weight: .bold)
+    text("Download App", x: 115, top: 513, fontSize: 24, weight: .semibold)
+    text("This is fictional interface content", x: 45, top: 620, fontSize: 15)
+} else {
+    panel(x: 0, top: 0, width: 420, height: 932, color: .white)
+    text("SYNTHETIC EMPTY TEST SCREEN", x: 25, top: 45, fontSize: 20, weight: .bold)
+    text("No interactive controls are shown", x: 25, top: 120, fontSize: 16)
+}
 
 image.unlockFocus()
 let destination = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first
