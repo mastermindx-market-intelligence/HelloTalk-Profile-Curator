@@ -46,6 +46,21 @@ jobs:
           swift scripts/generate-visual-agent-synthetic-fixture.swift "$RUNNER_TEMP/visual-agent-synthetic-unknown.png" unknown
           test -s "$RUNNER_TEMP/visual-agent-synthetic-ad.png"
           test -s "$RUNNER_TEMP/visual-agent-synthetic-unknown.png"
+      - name: Seal fictional fixture checksums
+        run: |
+          cd "$RUNNER_TEMP"
+          shasum -a 256 visual-agent-synthetic-*.png > visual-agent-synthetic-fixtures.sha256
+      - name: Publish synthetic model-test fixtures
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-agent-synthetic-fixtures
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/visual-agent-synthetic-profile.png
+            ${{ runner.temp }}/visual-agent-synthetic-ad.png
+            ${{ runner.temp }}/visual-agent-synthetic-unknown.png
+            ${{ runner.temp }}/visual-agent-synthetic-fixtures.sha256
       - name: Compile native application
         run: swift build
       - name: Run native unit tests
