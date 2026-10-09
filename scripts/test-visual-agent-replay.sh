@@ -11,3 +11,5 @@ swiftc -swift-version 6 -o "$binary" \
   "$root/Sources/ProfileCuratorCore/Navigation/VisualAgentReplayBenchmark.swift" \
   "$root/scripts/visual-agent-replay-evaluate.swift"
 "$binary" --self-test
+"$binary" "$root/fixtures/synthetic/visual-agent-replay-cases.json" \
+  "$root/fixtures/synthetic/visual-agent-replay-trials.json"
