@@ -41,4 +41,6 @@ jobs:
       - name: Compile native application
         run: swift build
       - name: Run native unit tests
+        env:
+          VISUAL_AGENT_SYNTHETIC_PNG: ${{ runner.temp }}/visual-agent-synthetic-profile.png
         run: swift test
