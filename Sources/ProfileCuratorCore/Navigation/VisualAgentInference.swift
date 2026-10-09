@@ -37,8 +37,9 @@ public enum VisualAgentPrompt {
 
     public static func user(goal: VisualAgentGoal, frame: VisualAgentFrame) -> String {
         let candidates = frame.elements
-            .filter { $0.role == .navigation || $0.role == .dismiss }
-            .filter { !VisualAgentSafetyGate.isForbiddenControl($0.label) }
+            .filter { $0.role == .navigation }
+            .filter { ($0.id == "tab-about-me" && $0.label == "About Me" && $0.actionKind == .selectAboutMe)
+                      || ($0.id == "tab-moments" && $0.label == "Moments" && $0.actionKind == .selectMoments) }
             .map { element in
                 let label = String(element.label.prefix(100)).replacingOccurrences(of: "\n", with: " ")
                     .replacingOccurrences(of: "\r", with: " ")
