@@ -6,6 +6,20 @@ struct ContentView: View {
     @StateObject private var dashboardModel = ReviewDashboardViewModel()
 
     var body: some View {
+        Group {
+#if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--visual-agent-preview") {
+                VisualAgentPreviewWorkspace(model: model)
+            } else {
+                mainWorkspace
+            }
+#else
+            mainWorkspace
+#endif
+        }
+    }
+
+    private var mainWorkspace: some View {
         TabView {
             inspectorWorkspace
                 .tabItem { Label("Inspector", systemImage: "viewfinder") }
@@ -116,6 +130,7 @@ struct ContentView: View {
                 windowSection
                 automaticCollectionSection
                 navigationSection
+                VisualAgentOfflineInspector(model: model)
                 overlaySection
                 calibrationSection
                 parsedSection

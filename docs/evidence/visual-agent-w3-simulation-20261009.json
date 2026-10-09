@@ -1,0 +1,342 @@
+{
+  "missingReceipt" : {
+    "acknowledgedDispatches" : 0,
+    "events" : [
+      {
+        "detail" : "profilePersonalInfo",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "observation",
+        "step" : 0
+      },
+      {
+        "detail" : "tap_element tab-moments",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "proposal",
+        "step" : 0
+      },
+      {
+        "detail" : "approved simulation only",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "review",
+        "step" : 0
+      },
+      {
+        "detail" : "in-memory simulated action 4CD1804F-3D1C-4A45-9D87-69907FEFB176",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "dispatch_attempt",
+        "step" : 0
+      },
+      {
+        "detail" : "missingReceipt",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "stop",
+        "step" : 0
+      }
+    ],
+    "evidenceKind" : "offline_simulation_no_model_inference",
+    "schemaVersion" : "visual-agent.simulation-report.v1",
+    "simulatedDispatchAttempts" : 1,
+    "stopReason" : "missingReceipt",
+    "verifiedActions" : 0
+  },
+  "normal" : {
+    "acknowledgedDispatches" : 2,
+    "events" : [
+      {
+        "detail" : "profilePersonalInfo",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "observation",
+        "step" : 0
+      },
+      {
+        "detail" : "tap_element tab-moments",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "proposal",
+        "step" : 0
+      },
+      {
+        "detail" : "approved simulation only",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "review",
+        "step" : 0
+      },
+      {
+        "detail" : "in-memory simulated action CF874C5F-AE81-4630-B85C-E8FA0C3DBBF6",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "dispatch_attempt",
+        "step" : 0
+      },
+      {
+        "detail" : "simulated host receipt CF874C5F-AE81-4630-B85C-E8FA0C3DBBF6",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "dispatch",
+        "step" : 0
+      },
+      {
+        "detail" : "exact simulated dispatch acknowledged",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "acknowledgment",
+        "step" : 0
+      },
+      {
+        "detail" : "momentsFeed",
+        "frameID" : "6c8c9d1b79ee0010e34f3ebd6634cc5207c29719edde5a17cdd53563ec90d6a4",
+        "stage" : "observation",
+        "step" : 0
+      },
+      {
+        "detail" : "verified",
+        "frameID" : "6c8c9d1b79ee0010e34f3ebd6634cc5207c29719edde5a17cdd53563ec90d6a4",
+        "stage" : "verification",
+        "step" : 0
+      },
+      {
+        "detail" : "momentsFeed",
+        "frameID" : "6c8c9d1b79ee0010e34f3ebd6634cc5207c29719edde5a17cdd53563ec90d6a4",
+        "stage" : "observation",
+        "step" : 1
+      },
+      {
+        "detail" : "scroll_down ",
+        "frameID" : "6c8c9d1b79ee0010e34f3ebd6634cc5207c29719edde5a17cdd53563ec90d6a4",
+        "stage" : "proposal",
+        "step" : 1
+      },
+      {
+        "detail" : "approved simulation only",
+        "frameID" : "6c8c9d1b79ee0010e34f3ebd6634cc5207c29719edde5a17cdd53563ec90d6a4",
+        "stage" : "review",
+        "step" : 1
+      },
+      {
+        "detail" : "in-memory simulated action C49D5B07-C42B-4AA3-9C10-AFECA809E966",
+        "frameID" : "6c8c9d1b79ee0010e34f3ebd6634cc5207c29719edde5a17cdd53563ec90d6a4",
+        "stage" : "dispatch_attempt",
+        "step" : 1
+      },
+      {
+        "detail" : "simulated host receipt C49D5B07-C42B-4AA3-9C10-AFECA809E966",
+        "frameID" : "6c8c9d1b79ee0010e34f3ebd6634cc5207c29719edde5a17cdd53563ec90d6a4",
+        "stage" : "dispatch",
+        "step" : 1
+      },
+      {
+        "detail" : "exact simulated dispatch acknowledged",
+        "frameID" : "6c8c9d1b79ee0010e34f3ebd6634cc5207c29719edde5a17cdd53563ec90d6a4",
+        "stage" : "acknowledgment",
+        "step" : 1
+      },
+      {
+        "detail" : "momentsFeed",
+        "frameID" : "d1fbe049b7386cdbdc521bd3bce8d22213118742b11b8ed04af99d753fbb46cb",
+        "stage" : "observation",
+        "step" : 1
+      },
+      {
+        "detail" : "verified",
+        "frameID" : "d1fbe049b7386cdbdc521bd3bce8d22213118742b11b8ed04af99d753fbb46cb",
+        "stage" : "verification",
+        "step" : 1
+      },
+      {
+        "detail" : "momentsFeed",
+        "frameID" : "d1fbe049b7386cdbdc521bd3bce8d22213118742b11b8ed04af99d753fbb46cb",
+        "stage" : "observation",
+        "step" : 2
+      },
+      {
+        "detail" : "pause ",
+        "frameID" : "d1fbe049b7386cdbdc521bd3bce8d22213118742b11b8ed04af99d753fbb46cb",
+        "stage" : "proposal",
+        "step" : 2
+      },
+      {
+        "detail" : "approved simulation only",
+        "frameID" : "d1fbe049b7386cdbdc521bd3bce8d22213118742b11b8ed04af99d753fbb46cb",
+        "stage" : "review",
+        "step" : 2
+      },
+      {
+        "detail" : "plannerPause",
+        "frameID" : "d1fbe049b7386cdbdc521bd3bce8d22213118742b11b8ed04af99d753fbb46cb",
+        "stage" : "stop",
+        "step" : 2
+      }
+    ],
+    "evidenceKind" : "offline_simulation_no_model_inference",
+    "schemaVersion" : "visual-agent.simulation-report.v1",
+    "simulatedDispatchAttempts" : 2,
+    "stopReason" : "plannerPause",
+    "verifiedActions" : 2
+  },
+  "obstructionRecovery" : {
+    "acknowledgedDispatches" : 1,
+    "events" : [
+      {
+        "detail" : "profilePersonalInfo",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "observation",
+        "step" : 0
+      },
+      {
+        "detail" : "tap_element tab-moments",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "proposal",
+        "step" : 0
+      },
+      {
+        "detail" : "approved simulation only",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "review",
+        "step" : 0
+      },
+      {
+        "detail" : "in-memory simulated action 92A9A1E7-C29A-4DBE-A4A5-2055F80961FE",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "dispatch_attempt",
+        "step" : 0
+      },
+      {
+        "detail" : "simulated host receipt 92A9A1E7-C29A-4DBE-A4A5-2055F80961FE",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "dispatch",
+        "step" : 0
+      },
+      {
+        "detail" : "exact simulated dispatch acknowledged",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "acknowledgment",
+        "step" : 0
+      },
+      {
+        "detail" : "interstitialAd",
+        "frameID" : "d385910d31563f06242f9adff1f87341af8c8075283dec6519e8f4fe6717b40a",
+        "stage" : "observation",
+        "step" : 0
+      },
+      {
+        "detail" : "replan",
+        "frameID" : "d385910d31563f06242f9adff1f87341af8c8075283dec6519e8f4fe6717b40a",
+        "stage" : "verification",
+        "step" : 0
+      },
+      {
+        "detail" : "replan; same failed physical action stays blocked",
+        "frameID" : "d385910d31563f06242f9adff1f87341af8c8075283dec6519e8f4fe6717b40a",
+        "stage" : "recovery",
+        "step" : 0
+      },
+      {
+        "detail" : "interstitialAd",
+        "frameID" : "d385910d31563f06242f9adff1f87341af8c8075283dec6519e8f4fe6717b40a",
+        "stage" : "observation",
+        "step" : 1
+      },
+      {
+        "detail" : "pause ",
+        "frameID" : "d385910d31563f06242f9adff1f87341af8c8075283dec6519e8f4fe6717b40a",
+        "stage" : "proposal",
+        "step" : 1
+      },
+      {
+        "detail" : "approved simulation only",
+        "frameID" : "d385910d31563f06242f9adff1f87341af8c8075283dec6519e8f4fe6717b40a",
+        "stage" : "review",
+        "step" : 1
+      },
+      {
+        "detail" : "plannerPause",
+        "frameID" : "d385910d31563f06242f9adff1f87341af8c8075283dec6519e8f4fe6717b40a",
+        "stage" : "stop",
+        "step" : 1
+      }
+    ],
+    "evidenceKind" : "offline_simulation_no_model_inference",
+    "schemaVersion" : "visual-agent.simulation-report.v1",
+    "simulatedDispatchAttempts" : 1,
+    "stopReason" : "plannerPause",
+    "verifiedActions" : 0
+  },
+  "staleDuplicate" : {
+    "acknowledgedDispatches" : 1,
+    "events" : [
+      {
+        "detail" : "profilePersonalInfo",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "observation",
+        "step" : 0
+      },
+      {
+        "detail" : "tap_element tab-moments",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "proposal",
+        "step" : 0
+      },
+      {
+        "detail" : "approved simulation only",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "review",
+        "step" : 0
+      },
+      {
+        "detail" : "in-memory simulated action 69999DAE-996A-4B68-AD0D-9C83897FF68D",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "dispatch_attempt",
+        "step" : 0
+      },
+      {
+        "detail" : "simulated host receipt 69999DAE-996A-4B68-AD0D-9C83897FF68D",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "dispatch",
+        "step" : 0
+      },
+      {
+        "detail" : "exact simulated dispatch acknowledged",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "acknowledgment",
+        "step" : 0
+      },
+      {
+        "detail" : "momentsFeed",
+        "frameID" : "6c8c9d1b79ee0010e34f3ebd6634cc5207c29719edde5a17cdd53563ec90d6a4",
+        "stage" : "observation",
+        "step" : 0
+      },
+      {
+        "detail" : "verified",
+        "frameID" : "6c8c9d1b79ee0010e34f3ebd6634cc5207c29719edde5a17cdd53563ec90d6a4",
+        "stage" : "verification",
+        "step" : 0
+      },
+      {
+        "detail" : "momentsFeed",
+        "frameID" : "6c8c9d1b79ee0010e34f3ebd6634cc5207c29719edde5a17cdd53563ec90d6a4",
+        "stage" : "observation",
+        "step" : 1
+      },
+      {
+        "detail" : "tap_element tab-moments",
+        "frameID" : "bed52c9e8adf0d1d2907d1a09fc1a2cabe3e5ceb39b5bc32a37b21aa59695e85",
+        "stage" : "proposal",
+        "step" : 1
+      },
+      {
+        "detail" : "rejected: staleFrame",
+        "frameID" : "6c8c9d1b79ee0010e34f3ebd6634cc5207c29719edde5a17cdd53563ec90d6a4",
+        "stage" : "review",
+        "step" : 1
+      },
+      {
+        "detail" : "rejectedProposal",
+        "frameID" : "6c8c9d1b79ee0010e34f3ebd6634cc5207c29719edde5a17cdd53563ec90d6a4",
+        "stage" : "stop",
+        "step" : 1
+      }
+    ],
+    "evidenceKind" : "offline_simulation_no_model_inference",
+    "schemaVersion" : "visual-agent.simulation-report.v1",
+    "simulatedDispatchAttempts" : 1,
+    "stopReason" : "rejectedProposal",
+    "verifiedActions" : 1
+  }
+}
