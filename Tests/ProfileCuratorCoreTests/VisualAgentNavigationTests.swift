@@ -88,6 +88,7 @@ final class VisualAgentNavigationTests: XCTestCase {
     func testFailedActionCannotReplayAfterOnlyScreenshotFingerprintChanges() async {
         let session = VisualAgentSession()
         _ = await session.propose(proposal(), on: observation())
+        _ = await session.acknowledgeHostDispatch(for: "frame-1")
         let first = await session.verify(on: observation(id: "cursor-blink-2"))
         XCTAssertEqual(first, .replan)
         let response = await session.propose(proposal(id: "cursor-blink-2"),
@@ -98,6 +99,7 @@ final class VisualAgentNavigationTests: XCTestCase {
     func testChangingExpectedResultCannotAuthorizeSameFailedPhysicalClick() async {
         let session = VisualAgentSession()
         _ = await session.propose(proposal(), on: observation())
+        _ = await session.acknowledgeHostDispatch(for: "frame-1")
         let outcome = await session.verify(on: observation(id: "visual-change"))
         XCTAssertEqual(outcome, .replan)
         let repackaged = VisualAgentProposal(
@@ -121,6 +123,7 @@ final class VisualAgentNavigationTests: XCTestCase {
                                          expectation: .init(kind: .frameChanged),
                                          confidence: 0.94, rationale: "Scroll to details")
         _ = await session.propose(intent, on: before)
+        _ = await session.acknowledgeHostDispatch(for: before.id)
         let result = await session.verify(on: after)
         XCTAssertEqual(result, .replan)
     }
@@ -137,8 +140,27 @@ final class VisualAgentNavigationTests: XCTestCase {
                                          expectation: .init(kind: .frameChanged),
                                          confidence: 0.94, rationale: "Scroll to details")
         _ = await session.propose(intent, on: before)
+        _ = await session.acknowledgeHostDispatch(for: before.id)
         let result = await session.verify(on: after)
         XCTAssertEqual(result, .verified)
+    }
+
+    func testPassiveScreenChangeDoesNotCountAsExecutedAction() async {
+        let session = VisualAgentSession()
+        _ = await session.propose(proposal(), on: observation())
+        let after = VisualAgentFrame(id: "frame-2", screenKind: "profilePersonalInfo",
+                                     visibleText: ["Personal Info"], elements: [], exclusions: [],
+                                     stableObservationID: "layout-2")
+        let unarmed = await session.verify(on: after)
+        XCTAssertEqual(unarmed, .awaitingHostDispatch)
+        let invalidReceipt = await session.acknowledgeHostDispatch(for: "unrelated-frame")
+        XCTAssertFalse(invalidReceipt)
+        let correctReceipt = await session.acknowledgeHostDispatch(for: "frame-1")
+        XCTAssertTrue(correctReceipt)
+        let duplicateReceipt = await session.acknowledgeHostDispatch(for: "frame-1")
+        XCTAssertFalse(duplicateReceipt)
+        let final = await session.verify(on: after)
+        XCTAssertEqual(final, .verified)
     }
 
     func testTrustedTabBindingsRejectArbitraryNavigationActionsAndPromptInjection() {
@@ -169,6 +191,7 @@ final class VisualAgentNavigationTests: XCTestCase {
         XCTAssertEqual(rejected(gate.review(arbitrary, on: frame)), .missingSemanticExpectation)
         let session = VisualAgentSession()
         _ = await session.propose(proposal(), on: frame)
+        _ = await session.acknowledgeHostDispatch(for: frame.id)
         let popup = VisualAgentFrame(id: "other", screenKind: "interstitialAd", visibleText: ["Personal Info"],
                                     elements: [], exclusions: [], stableObservationID: "different")
         let result = await session.verify(on: popup)
@@ -199,6 +222,7 @@ final class VisualAgentNavigationTests: XCTestCase {
         XCTAssertEqual(rejected(pendingResponse), .unresolvedAction)
         let different = VisualAgentFrame(id: "frame-2", screenKind: "profilePersonalInfo",
                                          visibleText: ["Details"], elements: [], exclusions: [])
+        _ = await session.acknowledgeHostDispatch(for: "frame-1")
         let status = await session.verify(on: different)
         XCTAssertEqual(status, .verified)
     }
@@ -206,6 +230,7 @@ final class VisualAgentNavigationTests: XCTestCase {
     func testIdenticalFailedProposalDoesNotRetryBlindly() async {
         let session = VisualAgentSession()
         _ = await session.propose(proposal(), on: observation())
+        _ = await session.acknowledgeHostDispatch(for: "frame-1")
         let first = await session.verify(on: observation())
         XCTAssertEqual(first, .replan)
         let retriedResponse = await session.propose(proposal(), on: observation())
@@ -215,11 +240,13 @@ final class VisualAgentNavigationTests: XCTestCase {
     func testConsecutiveFailuresRequireHumanReset() async {
         let session = VisualAgentSession()
         _ = await session.propose(proposal(), on: observation())
+        _ = await session.acknowledgeHostDispatch(for: "frame-1")
         _ = await session.verify(on: observation())
         let alternative = VisualAgentProposal(frameID: "frame-3", action: .scrollDown,
                                               expectation: .init(kind: .frameChanged),
                                               confidence: 0.92, rationale: "Try a scroll instead")
         _ = await session.propose(alternative, on: observation(id: "frame-3"))
+        _ = await session.acknowledgeHostDispatch(for: "frame-3")
         let result = await session.verify(on: observation(id: "frame-3"))
         XCTAssertEqual(result, .needsHuman)
         let pausedResponse = await session.propose(proposal(), on: observation())
