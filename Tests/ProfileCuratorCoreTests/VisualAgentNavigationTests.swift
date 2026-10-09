@@ -67,10 +67,32 @@ final class VisualAgentNavigationTests: XCTestCase {
         let gate = VisualAgentSafetyGate()
         let scroll = proposal(action: .scrollDown, expectation: .init(kind: .frameChanged))
         let unknown = VisualAgentFrame(id: "frame-1", screenKind: "unknown", visibleText: [], elements: [], exclusions: [])
-        XCTAssertEqual(rejected(gate.review(scroll, on: unknown)), .missingSemanticExpectation)
+        XCTAssertEqual(rejected(gate.review(scroll, on: unknown)), .unsupportedAction)
         if case .approved(.wait) = gate.review(proposal(action: .wait, expectation: nil), on: unknown) {} else {
             XCTFail("Expected an inert wait")
         }
+    }
+
+    func testOverlayScreensCannotBeTappedOrScrolledEvenWithPlausibleOCR() {
+        let gate = VisualAgentSafetyGate()
+        let scroll = proposal(action: .scrollDown, expectation: .init(kind: .frameChanged))
+        for screen in ["unknown", "interstitialAd", "momentViewer", "profileOverflowMenu", "momentDetails"] {
+            let frame = VisualAgentFrame(id: "frame-1", screenKind: screen,
+                                         visibleText: ["About Me"], elements: observation().elements,
+                                         exclusions: [])
+            XCTAssertEqual(rejected(gate.review(proposal(), on: frame)), .unsupportedAction, screen)
+            XCTAssertEqual(rejected(gate.review(scroll, on: frame)), .unsupportedAction, screen)
+        }
+    }
+
+    func testFailedActionCannotReplayAfterOnlyScreenshotFingerprintChanges() async {
+        let session = VisualAgentSession()
+        _ = await session.propose(proposal(), on: observation())
+        let first = await session.verify(on: observation(id: "cursor-blink-2"))
+        XCTAssertEqual(first, .replan)
+        let response = await session.propose(proposal(id: "cursor-blink-2"),
+                                             on: observation(id: "cursor-blink-2"))
+        XCTAssertEqual(rejected(response), .repeatedFailure)
     }
 
     func testMalformedOrOversizedModelResponseRejected() {
@@ -104,7 +126,10 @@ final class VisualAgentNavigationTests: XCTestCase {
         let session = VisualAgentSession()
         _ = await session.propose(proposal(), on: observation())
         _ = await session.verify(on: observation())
-        _ = await session.propose(proposal(id: "frame-3"), on: observation(id: "frame-3"))
+        let alternative = VisualAgentProposal(frameID: "frame-3", action: .scrollDown,
+                                              expectation: .init(kind: .frameChanged),
+                                              confidence: 0.92, rationale: "Try a scroll instead")
+        _ = await session.propose(alternative, on: observation(id: "frame-3"))
         let result = await session.verify(on: observation(id: "frame-3"))
         XCTAssertEqual(result, .needsHuman)
         let pausedResponse = await session.propose(proposal(), on: observation())
