@@ -37,14 +37,18 @@ public struct VisualAgentElement: Sendable {
 
 public struct VisualAgentFrame: Sendable {
     public let id: String
+    /// OCR/layout fingerprint that excludes known rotating badges; not a pixel hash.
+    public let stableObservationID: String?
     public let screenKind: String
     public let visibleText: [String]
     public let elements: [VisualAgentElement]
     public let exclusions: [ExclusionZone]
 
     public init(id: String, screenKind: String, visibleText: [String],
-                elements: [VisualAgentElement], exclusions: [ExclusionZone]) {
+                elements: [VisualAgentElement], exclusions: [ExclusionZone],
+                stableObservationID: String? = nil) {
         self.id = id
+        self.stableObservationID = stableObservationID
         self.screenKind = screenKind
         self.visibleText = visibleText
         self.elements = elements
@@ -301,8 +305,18 @@ public actor VisualAgentSession {
         if changed, let expected {
             switch expected.kind {
             case .frameChanged:
-                // A blinking cursor/video is not proof of a successful scroll.
-                passed = before.screenKind != after.screenKind || before.visibleText != after.visibleText
+                // The existing OCR fingerprint ignores rotating location/nearby
+                // badges. Never count a timestamp/badge animation as scrolling.
+                switch (before.stableObservationID, after.stableObservationID) {
+                case (.some(let oldID), .some(let newID)):
+                    passed = before.screenKind != after.screenKind || (!oldID.isEmpty && oldID != newID)
+                case (nil, nil):
+                    // Synthetic fixtures without an observation builder can
+                    // still test text-based changes; native frames provide IDs.
+                    passed = before.screenKind != after.screenKind || before.visibleText != after.visibleText
+                default:
+                    passed = false
+                }
             case .screenKind:
                 passed = after.screenKind == expected.value && before.screenKind != after.screenKind
             case .textAppeared:
