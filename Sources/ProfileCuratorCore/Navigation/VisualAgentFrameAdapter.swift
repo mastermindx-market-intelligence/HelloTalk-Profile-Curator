@@ -39,7 +39,8 @@ public struct VisualAgentFrameAdapter: Sendable {
             screenKind: observation.screen.kind.rawValue,
             visibleText: analysis.text.map(\.text),
             elements: controls,
-            exclusions: exclusions
+            exclusions: exclusions,
+            stableObservationID: observation.fingerprint
         )
     }
 }
