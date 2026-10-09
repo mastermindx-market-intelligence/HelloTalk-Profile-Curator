@@ -17,16 +17,19 @@ public struct VisualAgentFrameAdapter: Sendable {
         guard !screenshotDigest.isEmpty else { throw VisualAgentFrameAdapterError.missingScreenshotDigest }
         let interaction = ProfileInteractionSafety()
         var controls: [VisualAgentElement] = []
-        for (tab, id) in [("About Me", "tab-about-me"), ("Moments", "tab-moments")] {
-            guard let action = interaction.tabAction(named: tab, in: analysis.text),
-                  let bounds = action.requiredSafeRegion, bounds.isValidNormalizedRect else { continue }
-            controls.append(VisualAgentElement(
-                id: id,
-                label: tab,
-                role: .navigation,
-                actionKind: action.kind,
-                bounds: bounds
-            ))
+        let tabScreens: Set<String> = ["profileTop", "profilePersonalInfo", "suggestedProfilesGallery", "momentsFeed"]
+        if tabScreens.contains(observation.screen.kind.rawValue) {
+            for (tab, id) in [("About Me", "tab-about-me"), ("Moments", "tab-moments")] {
+                guard let action = interaction.tabAction(named: tab, in: analysis.text),
+                      let bounds = action.requiredSafeRegion, bounds.isValidNormalizedRect else { continue }
+                controls.append(VisualAgentElement(
+                    id: id,
+                    label: tab,
+                    role: .navigation,
+                    actionKind: action.kind,
+                    bounds: bounds
+                ))
+            }
         }
         let exclusions = calibratedExclusions
             + SocialControlExclusionDetector().exclusions(in: analysis.text)
