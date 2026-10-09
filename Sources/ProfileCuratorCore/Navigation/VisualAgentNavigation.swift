@@ -268,6 +268,7 @@ public enum VisualAgentVerification: Sendable, Equatable {
     case verified
     case replan
     case needsHuman
+    case awaitingHostDispatch
     case nothingPending
 }
 
@@ -276,6 +277,7 @@ public actor VisualAgentSession {
     private struct Pending {
         let before: VisualAgentFrame
         let proposal: VisualAgentProposal
+        var hostDispatched: Bool
     }
     private var pending: Pending?
     private var failedSignature: String?
@@ -294,7 +296,7 @@ public actor VisualAgentSession {
         if case .approved(let preview) = result {
             switch preview {
             case .tap, .scroll:
-                pending = Pending(before: frame, proposal: proposal)
+                pending = Pending(before: frame, proposal: proposal, hostDispatched: false)
                 waits = 0
             case .wait:
                 waits += 1
@@ -306,9 +308,22 @@ public actor VisualAgentSession {
         return result
     }
 
-    /// Called only after the host observes the result of a single reviewed action.
+    /// Only the authorized host input executor may call this after an attempted
+    /// action. Model output and an approved preview are NOT dispatch evidence.
+    /// This is a host assertion, not a substitute for an actual executor receipt.
+    public func acknowledgeHostDispatch(for frameID: String) -> Bool {
+        guard !stopped, var item = pending, !item.hostDispatched,
+              item.before.id == frameID else { return false }
+        item.hostDispatched = true
+        pending = item
+        return true
+    }
+
+    /// Observe the postcondition ONLY after host-reported action dispatch. An
+    /// unsolicited screenshot change cannot complete a proposal.
     public func verify(on after: VisualAgentFrame) -> VisualAgentVerification {
         guard let old = pending else { return .nothingPending }
+        guard old.hostDispatched else { return .awaitingHostDispatch }
         pending = nil
         let before = old.before
         let proposal = old.proposal
