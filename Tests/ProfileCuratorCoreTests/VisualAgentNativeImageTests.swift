@@ -36,4 +36,37 @@ final class VisualAgentNativeImageTests: XCTestCase {
         XCTAssertFalse(frame.elements.contains(where: { VisualAgentSafetyGate.isForbiddenControl($0.label) }))
         XCTAssertTrue(frame.elements.allSatisfy { $0.bounds.isValidNormalizedRect })
     }
+    func testFictionalAdvertisementAndUnknownScreensHaveNoTrustedTabs() throws {
+        let variants: [(String, DetectedScreenKind)] = [
+            ("VISUAL_AGENT_SYNTHETIC_AD_PNG", .interstitialAd),
+            ("VISUAL_AGENT_SYNTHETIC_UNKNOWN_PNG", .unknown)
+        ]
+        guard variants.allSatisfy({ ProcessInfo.processInfo.environment[$0.0] != nil }) else {
+            throw XCTSkip("Optional synthetic screen variants not generated")
+        }
+        for (name, expected) in variants {
+            guard let path = ProcessInfo.processInfo.environment[name] else { return XCTFail("Missing fixture") }
+            let url = URL(fileURLWithPath: path)
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                  let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                return XCTFail("Synthetic screenshot could not be decoded")
+            }
+            let analysis = try VisionFixtureAnalyzer().analyze(image)
+            let observation = ObservationSnapshotBuilder().build(from: analysis, image: image)
+            XCTAssertEqual(observation.screen.kind, expected, name)
+            let frame = try VisualAgentFrameAdapter().build(
+                screenshotDigest: String(repeating: "a", count: 64),
+                observation: observation, analysis: analysis
+            )
+            XCTAssertTrue(frame.elements.isEmpty, "Unsafe nav controls leaked on \(name)")
+            let fabricated = VisualAgentProposal(frameID: frame.id, action: .scrollDown,
+                                                 expectation: .init(kind: .frameChanged),
+                                                 confidence: 0.99, rationale: "Unsafe model action")
+            if case .rejected(.unsupportedAction) = VisualAgentSafetyGate().review(fabricated, on: frame) {
+            } else {
+                XCTFail("Screen \(name) must refuse navigation")
+            }
+        }
+    }
+
 }
