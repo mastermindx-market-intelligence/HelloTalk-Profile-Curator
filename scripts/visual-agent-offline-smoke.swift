@@ -10,11 +10,11 @@ private actor FakeFabric: VisualAgentFabricPreviewTransport {
         invocations += 1
         lastPreference = request.modelPreference
         precondition(request.schemaVersion == "visual-agent.fabric-preview.v1")
-        precondition(request.prompt.contains("tab-about"))
+        precondition(request.prompt.contains("tab-about-me"))
         precondition(request.syntheticFixturePNG.starts(with: [137, 80, 78, 71, 13, 10, 26, 10]))
         let proposal = unsafeAnswer ?
-            #"{"schema_version":"visual-agent.v1","frame_id":"f1","action":"tap_element","element_id":"made-up-id","expectation":{"kind":"screen_kind","value":"details"},"confidence":0.99,"rationale":"Unsafe model output"}"# :
-            #"{"schema_version":"visual-agent.v1","frame_id":"f1","action":"tap_element","element_id":"tab-about","expectation":{"kind":"screen_kind","value":"details"},"confidence":0.93,"rationale":"Observed About tab"}"#
+            #"{"schema_version":"visual-agent.v1","frame_id":"f1","action":"tap_element","element_id":"made-up-id","expectation":{"kind":"screen_kind","value":"profilePersonalInfo"},"confidence":0.99,"rationale":"Unsafe model output"}"# :
+            #"{"schema_version":"visual-agent.v1","frame_id":"f1","action":"tap_element","element_id":"tab-about-me","expectation":{"kind":"screen_kind","value":"profilePersonalInfo"},"confidence":0.93,"rationale":"Observed About tab"}"#
         return VisualAgentFabricPreviewResponse(frameID: mismatchFrame ? "wrong" : request.frameID,
                 proposalJSON: Data(proposal.utf8), reportedProviderProfile: "synthetic-provider",
                 reportedServedModel: "synthetic-model")
@@ -30,14 +30,14 @@ private enum Smoke {
     static func assert(_ b: Bool, _ label: String) { if !b { fatalError("FAILED: \(label)") } }
     static func frame(id: String = "f1", target: VisualAgentElement? = nil,
                       blocked: Bool = false) -> VisualAgentFrame {
-        let t = target ?? VisualAgentElement(id: "tab-about", label: "About Me", role: .navigation,
+        let t = target ?? VisualAgentElement(id: "tab-about-me", label: "About Me", role: .navigation,
             actionKind: .selectAboutMe, bounds: NormalizedRect(x: 0.1, y: 0.3, width: 0.2, height: 0.07))
         let exclusions = blocked ? [ExclusionZone(label: "social", bounds: NormalizedRect(x: 0.15, y: 0.28, width: 0.10, height: 0.11))] : []
-        return VisualAgentFrame(id: id, screenKind: "profileTop", visibleText: ["About Me"], elements: [t], exclusions: exclusions)
+        return VisualAgentFrame(id: id, screenKind: "profileTop", visibleText: ["About Me"], elements: [t], exclusions: exclusions, stableObservationID: "stable-top")
     }
     static func proposal(id: String = "f1", action: VisualAgentAction = .tapElement,
-                         element: String? = "tab-about", confidence: Double = 0.95,
-                         expectation: VisualAgentExpectation? = .init(kind: .screenKind, value: "details")) -> VisualAgentProposal {
+                         element: String? = "tab-about-me", confidence: Double = 0.95,
+                         expectation: VisualAgentExpectation? = .init(kind: .screenKind, value: "profilePersonalInfo")) -> VisualAgentProposal {
         VisualAgentProposal(frameID: id, action: action, elementID: element,
             expectation: expectation, confidence: confidence, rationale: "Navigate")
     }
@@ -53,17 +53,17 @@ private enum Smoke {
         Smoke.assert(Smoke.rejection(gate.review(Smoke.proposal(id:"old"), on: Smoke.frame())) == .staleFrame, "stale")
         Smoke.assert(Smoke.rejection(gate.review(Smoke.proposal(confidence:0.4), on: Smoke.frame())) == .lowConfidence, "confidence")
         Smoke.assert(Smoke.rejection(gate.review(Smoke.proposal(), on: Smoke.frame(blocked:true))) == .excludedRegion, "overlap")
-        let social = VisualAgentElement(id:"tab-about",label:"Say Hi",role:.navigation,
+        let social = VisualAgentElement(id:"tab-about-me",label:"Say Hi",role:.navigation,
              actionKind:.selectAboutMe,bounds:.init(x:0.1,y:0.2,width:0.2,height:0.05))
         Smoke.assert(Smoke.rejection(gate.review(Smoke.proposal(),on:Smoke.frame(target:social))) == .forbiddenLabel,"forbidden")
-        let role = VisualAgentElement(id:"tab-about",label:"About Me",role:.social,
+        let role = VisualAgentElement(id:"tab-about-me",label:"About Me",role:.social,
              actionKind:.selectAboutMe,bounds:.init(x:0.1,y:0.2,width:0.2,height:0.05))
         Smoke.assert(Smoke.rejection(gate.review(Smoke.proposal(),on:Smoke.frame(target:role))) == .unsafeElement,"social role")
         Smoke.assert(Smoke.rejection(gate.review(Smoke.proposal(expectation:nil),on:Smoke.frame())) == .missingSemanticExpectation,"expected")
         Smoke.assert(Smoke.rejection(gate.review(Smoke.proposal(expectation:.init(kind:.frameChanged)),on:Smoke.frame())) == .missingSemanticExpectation,"hash-only")
         Smoke.assert(Smoke.rejection(gate.review(Smoke.proposal(action:.scrollDown,element:nil,expectation:.init(kind:.frameChanged)),on:Smoke.frame())) == nil,"scroll")
         Smoke.assert(Smoke.rejection(gate.review(Smoke.proposal(action:.scrollDown,element:nil,expectation:.init(kind:.frameChanged)),on:.init(id:"f1",screenKind:"unknown",visibleText:[],elements:[],exclusions:[]))) == .unsupportedAction,"unknown")
-        let duplicate = VisualAgentElement(id:"tab-about",label:"About Me",role:.navigation,actionKind:.selectAboutMe,bounds:.init(x:0.1,y:0.3,width:0.2,height:0.07))
+        let duplicate = VisualAgentElement(id:"tab-about-me",label:"About Me",role:.navigation,actionKind:.selectAboutMe,bounds:.init(x:0.1,y:0.3,width:0.2,height:0.07))
         let two = VisualAgentFrame(id:"f1",screenKind:"profileTop",visibleText:[],elements:[duplicate,duplicate],exclusions:[])
         Smoke.assert(Smoke.rejection(gate.review(Smoke.proposal(),on:two)) == .unsafeElement,"duplicate")
         do { _ = try VisualAgentProposal.decodeJSON(Data(repeating:32,count:8193)); fatalError("oversize accepted") }
@@ -71,7 +71,7 @@ private enum Smoke {
         let actor = VisualAgentSession()
         Smoke.assert(Smoke.isApproved(await actor.propose(Smoke.proposal(),on:Smoke.frame())),"session")
         Smoke.assert(Smoke.rejection(await actor.propose(Smoke.proposal(),on:Smoke.frame())) == .unresolvedAction,"pending")
-        Smoke.assert(await actor.verify(on:.init(id:"f2",screenKind:"details",visibleText:["Details"],elements:[],exclusions:[])) == .verified,"semantic")
+        Smoke.assert(await actor.verify(on:.init(id:"f2",screenKind:"profilePersonalInfo",visibleText:["Details"],elements:[],exclusions:[])) == .verified,"semantic")
         Smoke.assert(Smoke.isApproved(await actor.propose(Smoke.proposal(),on:Smoke.frame())),"new")
         Smoke.assert(await actor.verify(on:Smoke.frame()) == .replan,"replan")
         Smoke.assert(Smoke.rejection(await actor.propose(Smoke.proposal(),on:Smoke.frame())) == .repeatedFailure,"duplicate retry")
