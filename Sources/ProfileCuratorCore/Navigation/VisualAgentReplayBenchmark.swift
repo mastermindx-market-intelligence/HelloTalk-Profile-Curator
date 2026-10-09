@@ -75,11 +75,16 @@ public struct VisualAgentReplayReport: Codable, Sendable {
 public enum VisualAgentReplayError: Error, Sendable {
     case invalidCaseIDs
     case unknownCaseID
+    case duplicateTrial
     case invalidElapsedTime
 }
 
 public struct VisualAgentReplayBenchmark: Sendable {
     public init() {}
+
+    private static func trialKey(_ caseID: String, _ model: VisualAgentModelPreference) -> String {
+        model.rawValue + "|" + caseID
+    }
 
     public func score(cases: [VisualAgentReplayCase], trials: [VisualAgentReplayTrial]) throws -> VisualAgentReplayReport {
         let ids = cases.map(\.id)
@@ -87,9 +92,14 @@ public struct VisualAgentReplayBenchmark: Sendable {
               Set(ids).count == ids.count else { throw VisualAgentReplayError.invalidCaseIDs }
         let casesByID = Dictionary(uniqueKeysWithValues: cases.map { ($0.id, $0) })
         var results: [VisualAgentReplayResult] = []
-        results.reserveCapacity(trials.count)
+        results.reserveCapacity(cases.count * 2)
+        var seenTrials = Set<String>()
+        var evaluatedModels = Set<VisualAgentModelPreference>()
         for trial in trials {
             guard let sample = casesByID[trial.caseID] else { throw VisualAgentReplayError.unknownCaseID }
+            let trialKey = Self.trialKey(trial.caseID, trial.modelPreference)
+            guard seenTrials.insert(trialKey).inserted else { throw VisualAgentReplayError.duplicateTrial }
+            evaluatedModels.insert(trial.modelPreference)
             if let ms = trial.elapsedMilliseconds {
                 guard ms.isFinite && ms >= 0 && ms <= 3_600_000 else {
                     throw VisualAgentReplayError.invalidElapsedTime
@@ -128,6 +138,19 @@ public struct VisualAgentReplayBenchmark: Sendable {
                 caseID: trial.caseID, modelPreference: trial.modelPreference,
                 verdict: verdict, proposedAction: action, elapsedMilliseconds: trial.elapsedMilliseconds
             ))
+        }
+        // Fix the model comparison denominator to the *oracle case set*, not the
+        // number of answers the model happened to provide. Missing hard cases
+        // must count as missing output instead of disappearing from accuracy.
+        // A model with no submitted trials is not evaluated or ranked at all.
+        for preference in [VisualAgentModelPreference.qwen, .minimax] where evaluatedModels.contains(preference) {
+            for sample in cases {
+                guard !seenTrials.contains(Self.trialKey(sample.id, preference)) else { continue }
+                results.append(VisualAgentReplayResult(
+                    caseID: sample.id, modelPreference: preference,
+                    verdict: .missingOutput, proposedAction: nil, elapsedMilliseconds: nil
+                ))
+            }
         }
         let summaries = [VisualAgentModelPreference.qwen, .minimax].compactMap { preference -> VisualAgentReplayModelSummary? in
             let rows = results.filter { $0.modelPreference == preference }
