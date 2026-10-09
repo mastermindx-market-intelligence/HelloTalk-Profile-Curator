@@ -106,6 +106,12 @@ public struct VisualAgentProposal: Codable, Sendable {
     /// No markdown fences, trailing prose, oversized answers, or alternate schemas.
     public static func decodeJSON(_ bytes: Data) throws -> VisualAgentProposal {
         guard !bytes.isEmpty, bytes.count <= 8_192 else { throw VisualAgentRejection.malformedOutput }
+        let allowed: Set<String> = ["schema_version", "frame_id", "action", "element_id", "expectation", "confidence", "rationale"]
+        guard let object = try JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+              Set(object.keys).isSubset(of: allowed) else { throw VisualAgentRejection.malformedOutput }
+        if let expectation = object["expectation"] as? [String: Any] {
+            guard Set(expectation.keys).isSubset(of: ["kind", "value"]) else { throw VisualAgentRejection.malformedOutput }
+        }
         return try JSONDecoder().decode(Self.self, from: bytes)
     }
 }
@@ -337,7 +343,10 @@ public actor VisualAgentSession {
                 // badges. Never count a timestamp/badge animation as scrolling.
                 switch (before.stableObservationID, after.stableObservationID) {
                 case (.some(let oldID), .some(let newID)):
-                    passed = before.screenKind != after.screenKind || (!oldID.isEmpty && oldID != newID)
+                    // A scroll must preserve the recognized surface. An ad or
+                    // popup replacing it is a recovery condition, not progress.
+                    passed = before.screenKind == after.screenKind &&
+                        !oldID.isEmpty && !newID.isEmpty && oldID != newID
                 default:
                     // No reliable OCR-layout fingerprint: do not infer progress
                     // from animations, a rotating badge, or other text changes.

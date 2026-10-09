@@ -1,5 +1,81 @@
 # Visual-agent navigation — Subagent Fabric preview integration
 
+## W3 — Local macOS synthetic closed loop (2026-10-09)
+
+The offline navigation capability now runs a bounded **decision → safety review →
+simulated host action → exact dispatch receipt → observation → semantic
+verification → recovery/STOP** sequence. Decisions in this proof are explicitly
+synthetic model-response fixtures, not actual Qwen/MiniMax inference. The native
+CLI uses locally generated PNGs, their SHA-256 digests, actual Apple Vision OCR,
+the existing frame adapter, safety gate and `VisualAgentSession`.
+
+- `VisualAgentSimulation.swift` supplies the fixture planner, concrete in-memory
+  fake host, dispatch receipts, stop latch and structured transcript. It has no
+  live input/network/window driver. The test host's next observation is authored
+  independently of the model's expected destination. Attempts, acknowledgments
+  and verified actions are counted separately. A missing/mismatched receipt stops
+  the loop; it cannot trigger a duplicate attempt.
+- `VisualAgentLocalImageFrame.swift` decodes bounded local images and builds
+  source-bound frames through Apple Vision. It does not attest provenance or
+  grant image-transfer rights. The shell runner generates all of its own inputs.
+- `sh scripts/test-visual-agent-simulation.sh` builds the native core and runs
+  four assertion-backed transcripts: two verified actions then pause; wrong
+  destination/ad → replan → pause; missing receipt → STOP; and stale duplicate
+  response → refusal after one verified action. The JSON output is a simulation
+  report, never a model benchmark.
+- Scroll progress now requires a changed nonempty stable OCR/layout fingerprint
+  on the **same** screen. A changed screen, including an ad/popup, cannot satisfy
+  scrolling. Proposal JSON also rejects undeclared coordinates and nested actions.
+- Regression coverage includes missing/malformed images and responses, stale
+  frame binding, wrong expectations, forbidden controls, duplicate failed
+  actions, two distinct failures, rotating badges, absent/mismatched receipts,
+  bounded waits/steps, concurrent runs and STOP during a pending decision.
+
+Native local proof: macOS 26.5 arm64, Apple Swift 6.3.3; full `swift build` and
+`swift test`, plus the smoke, mock replay and native simulation runners. See
+`docs/evidence/visual-agent-w3-local-20261009.md` for the exact test totals,
+custody, scope and retained artifacts. Native CI also runs the new simulator.
+
+**GUI acceptance remains unproven.** The normal SwiftUI launch produced a hidden
+window. `VisualAgentPreviewWorkspace` exposes the same read-only panel in an
+explicit DEBUG workspace; the separate native acceptance launcher builds the
+existing app views without editing the production entry point or Jimu files:
+
+```sh
+sh scripts/build-visual-agent-preview.sh /absolute/fresh/path/ProfileCuratorOfflinePreview.app
+/absolute/fresh/path/ProfileCuratorOfflinePreview.app/Contents/MacOS/ProfileCuratorPreview \
+  --visual-agent-fixture /absolute/path/to/generated/profile.png
+```
+
+This creates and signs a local test bundle, without installation. A fresh output
+path is required to preserve prior artifacts. The AppKit launcher reported a
+visible window, but Codex computer-use repeatedly returned
+`Sky Computer Use native pipe closed before response` when selecting this app.
+Finder worked; macOS window-ID selection was unsupported. A native Terminal
+fallback was explicitly denied for safety and was not retried. No GUI screenshot,
+button exercise or installed-user-path proof is claimed from launch diagnostics.
+
+**Fabric image evaluation is NOT_TESTED.** Current selection with `--needs vision`
+refused all candidate subscription routes before dispatch:
+
+| Candidate route | Exact admission result |
+| --- | --- |
+| Alibaba / Qwen (`bailian`) | `NONE reason=bailian lacks vision (capability_unknown, R32)` |
+| MiniMax (`minimax`) | `NONE reason=minimax lacks vision (capability_unknown, R32)` |
+| OpenCode Go (`go`) | `NONE reason=go lacks vision (capability_unknown, R32)` |
+
+Executive V3 separately reported `ceo_submit_armed: false`. No model request,
+provider Attempt, screenshot transfer or measured model latency exists for W3.
+Actual served model and comparison denominator are unavailable; zero trials were
+submitted. Existing mock replay labels/timings remain fictional. Do not call a
+text-capable route or a model catalog entry multimodal qualification, override
+these refusals, or introduce a standing plan-key inference backend.
+
+The next frontier is actual native GUI acceptance through a serviceable authorized
+computer-use path, followed by multimodal qualification through the existing
+Fabric capability owner. Independent review precedes merge; merge/deployment,
+live HelloTalk navigation and real-profile transfer remain outside this assignment.
+
 ## Operating boundary
 
 This is an additive **offline, no-input navigation preview** in draft PR #7. It adds a local native Inspector panel **in source only**; the new panel does not run HelloTalk, click profiles, collect images, transmit screenshots or initiate any provider or Fabric operation. The installed app has not been updated or proven on a Mac. The pre-existing legacy automatic collector remains unchanged and separate. The current HelloTalk Profile Curator repository is PUBLIC. Never commit real screenshots, profile data, personal preferences, account metadata or credentials.

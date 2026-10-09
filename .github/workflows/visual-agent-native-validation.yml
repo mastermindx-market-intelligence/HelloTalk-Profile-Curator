@@ -9,6 +9,9 @@ on:
       - "Tests/ProfileCuratorCoreTests/VisualAgent*.swift"
       - "scripts/test-visual-agent-core.sh"
       - "scripts/test-visual-agent-replay.sh"
+      - "scripts/test-visual-agent-simulation.sh"
+      - "scripts/visual-agent-simulate.swift"
+      - "fixtures/synthetic/visual-agent-simulation-decisions.json"
       - "scripts/visual-agent-replay-evaluate.swift"
       - "scripts/generate-visual-agent-synthetic-fixture.swift"
       - ".github/workflows/visual-agent-native-validation.yml"
@@ -63,6 +66,8 @@ jobs:
             ${{ runner.temp }}/visual-agent-synthetic-fixtures.sha256
       - name: Compile native application
         run: swift build
+      - name: Verify native synthetic closed loop
+        run: sh scripts/test-visual-agent-simulation.sh
       - name: Run native unit tests
         env:
           VISUAL_AGENT_SYNTHETIC_PNG: ${{ runner.temp }}/visual-agent-synthetic-profile.png

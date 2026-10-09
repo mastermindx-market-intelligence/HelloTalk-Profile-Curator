@@ -26,11 +26,11 @@ func text(_ value: String, x: CGFloat, top: CGFloat, fontSize: CGFloat = 16,
 }
 
 let scenario = CommandLine.arguments.dropFirst().dropFirst().first ?? "profile"
-guard ["profile", "advertisement", "unknown"].contains(scenario) else {
-    fatalError("Only profile, advertisement and unknown synthetic scenarios are supported")
+guard ["profile", "moments", "moments-scrolled", "advertisement", "unknown"].contains(scenario) else {
+    fatalError("Only profile, moments, moments-scrolled, advertisement and unknown synthetic scenarios are supported")
 }
 
-if scenario == "profile" {
+if ["profile", "moments", "moments-scrolled"].contains(scenario) {
 panel(x: 0, top: 0, width: 420, height: 932, color: .white)
 panel(x: 0, top: 0, width: 420, height: 82, color: NSColor(calibratedRed: 0.12, green: 0.32, blue: 0.59, alpha: 1))
 text("SYNTHETIC TEST SCREEN", x: 24, top: 24, fontSize: 19, weight: .bold, color: .white)
@@ -57,10 +57,19 @@ panel(x: 216, top: 498, width: 186, height: 45,
 text("About Me", x: 64, top: 508, fontSize: 19, weight: .semibold)
 text("Moments", x: 258, top: 508, fontSize: 19, weight: .semibold)
 
-text("Personal Info", x: 28, top: 576, fontSize: 20, weight: .bold)
-text("Languages: English, Spanish", x: 30, top: 612, fontSize: 14)
-text("Interests: Music, hiking, reading", x: 30, top: 646, fontSize: 14)
-text("MBTI: INTJ (fictional)", x: 30, top: 680, fontSize: 14)
+if scenario == "profile" {
+    text("Personal Info", x: 28, top: 576, fontSize: 20, weight: .bold)
+    text("Languages: English, Spanish", x: 30, top: 612, fontSize: 14)
+    text("Interests: Music, hiking, reading", x: 30, top: 646, fontSize: 14)
+    text("MBTI: INTJ (fictional)", x: 30, top: 680, fontSize: 14)
+} else {
+    text("Posts", x: 28, top: 576, fontSize: 20, weight: .bold)
+    text("Album", x: 210, top: 576, fontSize: 20)
+    let page = scenario == "moments" ? "First" : "Second"
+    text("\(page) fictional post", x: 30, top: 620, fontSize: 18)
+    text(scenario == "moments" ? "A drawing of a forest" : "A drawing of the sea",
+         x: 30, top: 665, fontSize: 16)
+}
 
 panel(x: 0, top: 850, width: 420, height: 82,
       color: NSColor(calibratedRed: 0.96, green: 0.95, blue: 0.96, alpha: 1))
