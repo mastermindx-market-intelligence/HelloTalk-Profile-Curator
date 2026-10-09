@@ -42,9 +42,15 @@ jobs:
           swift scripts/generate-visual-agent-synthetic-fixture.swift "$RUNNER_TEMP/visual-agent-synthetic-profile.png"
           file "$RUNNER_TEMP/visual-agent-synthetic-profile.png"
           test -s "$RUNNER_TEMP/visual-agent-synthetic-profile.png"
+          swift scripts/generate-visual-agent-synthetic-fixture.swift "$RUNNER_TEMP/visual-agent-synthetic-ad.png" advertisement
+          swift scripts/generate-visual-agent-synthetic-fixture.swift "$RUNNER_TEMP/visual-agent-synthetic-unknown.png" unknown
+          test -s "$RUNNER_TEMP/visual-agent-synthetic-ad.png"
+          test -s "$RUNNER_TEMP/visual-agent-synthetic-unknown.png"
       - name: Compile native application
         run: swift build
       - name: Run native unit tests
         env:
           VISUAL_AGENT_SYNTHETIC_PNG: ${{ runner.temp }}/visual-agent-synthetic-profile.png
+          VISUAL_AGENT_SYNTHETIC_AD_PNG: ${{ runner.temp }}/visual-agent-synthetic-ad.png
+          VISUAL_AGENT_SYNTHETIC_UNKNOWN_PNG: ${{ runner.temp }}/visual-agent-synthetic-unknown.png
         run: swift test
