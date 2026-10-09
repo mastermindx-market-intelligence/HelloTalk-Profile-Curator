@@ -123,15 +123,103 @@ final class VisualAgentNavigationTests: XCTestCase {
         XCTAssertFalse(prompt.contains("Private biography"))
     }
 
-    func testRemoteModelRequiresExplicitOptIn() async {
-        let model = MiniMaxVisualAgent(apiKey: "not-a-real-key")
+    private var syntheticPNG: Data { Data([137, 80, 78, 71, 13, 10, 26, 10, 1]) }
+
+    func testDefaultFabricPreviewRefusesImageTransferBeforeTransport() async {
+        let fake = FakeVisualFabricTransport()
+        let client = VisualAgentFabricPreviewPlanner(transport: fake)
         do {
-            _ = try await model.propose(goal: .locateDetails, frame: observation(), png: Data([1]))
-            XCTFail("Model must remain disabled by default")
-        } catch VisualAgentInferenceError.offDeviceImagesNotAuthorized {
-            // Correct: no URLSession request was sent.
+            _ = try await client.preview(goal: .locateDetails, modelPreference: .qwen,
+                                         frame: observation(), syntheticFixturePNG: syntheticPNG)
+            XCTFail("Default must deny synthetic fixture transfer")
+        } catch VisualAgentInferenceError.fixtureTransferNotAuthorized {
         } catch {
-            XCTFail("Unexpected \(error)")
+            XCTFail("Unexpected error \(error)")
         }
+        let calls = await fake.count()
+        XCTAssertEqual(calls, 0)
+    }
+
+    func testNoFabricTransportFailsClosedAndNoDirectProviderFallbackExists() async {
+        let client = VisualAgentFabricPreviewPlanner(permitSyntheticFixtureTransfer: true)
+        do {
+            _ = try await client.preview(goal: .locateDetails, modelPreference: .minimax,
+                                         frame: observation(), syntheticFixturePNG: syntheticPNG)
+            XCTFail("Missing admitted Fabric transport must refuse")
+        } catch VisualAgentInferenceError.transportUnavailable {
+        } catch {
+            XCTFail("Unexpected error \(error)")
+        }
+    }
+
+    func testMalformedSyntheticFixtureFailsBeforeTransport() async {
+        let fake = FakeVisualFabricTransport()
+        let client = VisualAgentFabricPreviewPlanner(transport: fake, permitSyntheticFixtureTransfer: true)
+        do {
+            _ = try await client.preview(goal: .locateDetails, modelPreference: .qwen,
+                                         frame: observation(), syntheticFixturePNG: Data([1, 2]))
+            XCTFail("Non-PNG data must refuse")
+        } catch VisualAgentInferenceError.invalidSyntheticFixture {
+        } catch {
+            XCTFail("Unexpected error \(error)")
+        }
+        let calls = await fake.count()
+        XCTAssertEqual(calls, 0)
+    }
+
+    func testFabricRoutePreferenceIsNotDirectProviderSelection() async throws {
+        let fake = FakeVisualFabricTransport()
+        let client = VisualAgentFabricPreviewPlanner(transport: fake, permitSyntheticFixtureTransfer: true)
+        let result = try await client.preview(goal: .locateNavigationTab, modelPreference: .qwen,
+                                              frame: observation(), syntheticFixturePNG: syntheticPNG)
+        let family = await fake.lastPreference()
+        XCTAssertEqual(family, .qwen)
+        XCTAssertEqual(result.reportedProviderProfile, "synthetic-plan")
+        if case .approved(.tap) = result.review {} else { XCTFail("Expected safe, inert preview") }
+    }
+
+    func testFabricResultWrongFrameAndUngroundedTargetFailClosed() async throws {
+        let fake = FakeVisualFabricTransport()
+        let client = VisualAgentFabricPreviewPlanner(transport: fake, permitSyntheticFixtureTransfer: true)
+        await fake.setWrongFrame(true)
+        do {
+            _ = try await client.preview(goal: .locateDetails, modelPreference: .minimax,
+                                         frame: observation(), syntheticFixturePNG: syntheticPNG)
+            XCTFail("Wrong Fabric frame must refuse")
+        } catch VisualAgentInferenceError.staleFabricResult {
+        } catch {
+            XCTFail("Unexpected error \(error)")
+        }
+        await fake.setWrongFrame(false)
+        await fake.setHallucinatedControl(true)
+        let result = try await client.preview(goal: .locateDetails, modelPreference: .minimax,
+                                              frame: observation(), syntheticFixturePNG: syntheticPNG)
+        XCTAssertEqual(rejected(result.review), .unsafeElement)
+    }
+}
+
+private actor FakeVisualFabricTransport: VisualAgentFabricPreviewTransport {
+    private var invocationCount = 0
+    private var preference: VisualAgentModelPreference?
+    private var wrongFrame = false
+    private var hallucinatedControl = false
+
+    func setWrongFrame(_ value: Bool) { wrongFrame = value }
+    func setHallucinatedControl(_ value: Bool) { hallucinatedControl = value }
+    func count() -> Int { invocationCount }
+    func lastPreference() -> VisualAgentModelPreference? { preference }
+
+    func inferSyntheticPreview(_ request: VisualAgentFabricPreviewRequest) async throws -> VisualAgentFabricPreviewResponse {
+        invocationCount += 1
+        preference = request.modelPreference
+        let elementID = hallucinatedControl ? "invented-element" : "tab-about-me"
+        let json = #"{"schema_version":"visual-agent.v1","frame_id":"frame-1","action":"tap_element","element_id":"ELEMENT","expectation":{"kind":"screen_kind","value":"profilePersonalInfo"},"confidence":0.95,"rationale":"Synthetic fixture"}"#
+            .replacingOccurrences(of: "ELEMENT", with: elementID)
+        return VisualAgentFabricPreviewResponse(
+            frameID: wrongFrame ? "incorrect-frame" : request.frameID,
+            proposalJSON: Data(json.utf8),
+            reportedProviderProfile: "synthetic-plan",
+            reportedServedModel: "synthetic-model"
+        )
     }
 }
