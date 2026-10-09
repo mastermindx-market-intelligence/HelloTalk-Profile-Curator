@@ -1,0 +1,38 @@
+name: Visual Agent Native Validation
+
+on:
+  pull_request:
+    paths:
+      - "Sources/ProfileCuratorCore/Navigation/VisualAgent*.swift"
+      - "Sources/ProfileCuratorApp/VisualAgent*.swift"
+      - "Sources/ProfileCuratorApp/ContentView.swift"
+      - "Tests/ProfileCuratorCoreTests/VisualAgent*.swift"
+      - "scripts/test-visual-agent-core.sh"
+      - ".github/workflows/visual-agent-native-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visual-agent-native-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-native:
+    name: Swift build and tests (no live services)
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Report Swift version
+        run: swift --version
+      - name: Verify isolated navigation contract
+        run: sh scripts/test-visual-agent-core.sh
+      - name: Compile native application
+        run: swift build
+      - name: Run native unit tests
+        run: swift test
