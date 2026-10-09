@@ -119,6 +119,7 @@ struct VisualAgentOfflineInspector: View {
         do {
             let current = try buildCurrentFrame()
             guard current.id == inspectedFrame.id,
+                  current.stableObservationID == inspectedFrame.stableObservationID,
                   current.screenKind == inspectedFrame.screenKind,
                   sameCandidatesAndExclusions(current, inspectedFrame) else {
                 verdict = "REJECTED: The visible screen, controls, or exclusion areas changed. Inspect again."
