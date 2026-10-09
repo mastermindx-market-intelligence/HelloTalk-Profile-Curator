@@ -95,6 +95,20 @@ final class VisualAgentNavigationTests: XCTestCase {
         XCTAssertEqual(rejected(response), .repeatedFailure)
     }
 
+    func testChangingExpectedResultCannotAuthorizeSameFailedPhysicalClick() async {
+        let session = VisualAgentSession()
+        _ = await session.propose(proposal(), on: observation())
+        let outcome = await session.verify(on: observation(id: "visual-change"))
+        XCTAssertEqual(outcome, .replan)
+        let repackaged = VisualAgentProposal(
+            frameID: "visual-change", action: .tapElement,
+            elementID: "tab-about-me", expectation: .init(kind: .textAppeared, value: "Details"),
+            confidence: 0.99, rationale: "Changed postcondition, same tap"
+        )
+        let repeatResult = await session.propose(repackaged, on: observation(id: "visual-change"))
+        XCTAssertEqual(rejected(repeatResult), .repeatedFailure)
+    }
+
     func testRotatingLocationBadgeCannotFakeScrollProgress() async {
         let session = VisualAgentSession()
         let before = VisualAgentFrame(id: "pixels-1", screenKind: "profileTop",
