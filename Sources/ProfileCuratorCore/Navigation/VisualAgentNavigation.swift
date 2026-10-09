@@ -347,7 +347,8 @@ public actor VisualAgentSession {
 
     private static func signature(_ proposal: VisualAgentProposal) -> String {
         // Different screenshot bytes may be only a blinking cursor or animation.
-        // Failed semantic actions cannot be retried just by changing the frame ID.
-        "\(proposal.action.rawValue)|\(proposal.elementID ?? "")|\(proposal.expectation?.kind.rawValue ?? "")|\(proposal.expectation?.value ?? "")"
+        // A model cannot reopen the *same physical input* by changing the
+        // screenshot ID, the proposed postcondition, confidence, or rationale.
+        "\(proposal.action.rawValue)|\(proposal.elementID ?? "")"
     }
 }
