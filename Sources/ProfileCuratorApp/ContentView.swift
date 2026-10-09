@@ -116,6 +116,7 @@ struct ContentView: View {
                 windowSection
                 automaticCollectionSection
                 navigationSection
+                VisualAgentOfflineInspector(model: model)
                 overlaySection
                 calibrationSection
                 parsedSection
