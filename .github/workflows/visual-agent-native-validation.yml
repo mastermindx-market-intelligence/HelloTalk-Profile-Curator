@@ -8,6 +8,7 @@ on:
       - "Sources/ProfileCuratorApp/ContentView.swift"
       - "Tests/ProfileCuratorCoreTests/VisualAgent*.swift"
       - "scripts/test-visual-agent-core.sh"
+      - "scripts/generate-visual-agent-synthetic-fixture.swift"
       - ".github/workflows/visual-agent-native-validation.yml"
   workflow_dispatch:
 
@@ -32,6 +33,11 @@ jobs:
         run: swift --version
       - name: Verify isolated navigation contract
         run: sh scripts/test-visual-agent-core.sh
+      - name: Create fictional screenshot fixture
+        run: |
+          swift scripts/generate-visual-agent-synthetic-fixture.swift "$RUNNER_TEMP/visual-agent-synthetic-profile.png"
+          file "$RUNNER_TEMP/visual-agent-synthetic-profile.png"
+          test -s "$RUNNER_TEMP/visual-agent-synthetic-profile.png"
       - name: Compile native application
         run: swift build
       - name: Run native unit tests
