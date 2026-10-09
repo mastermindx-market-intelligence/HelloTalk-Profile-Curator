@@ -10,7 +10,7 @@ The user confirmed that local Windows/Ollama Qwen has been retired and that Qwen
 
 ## Fabric reality and routing ownership
 
-Consult Mastermind's current protected source (observed `master` `732cf7be88e7159b4995a8885fbd381cd1484e3e`), particularly:
+Consult Mastermind's protected source (revalidated `master` `ad362ef45def043ee5970c2b131be9825fcea1ae` on continuation), particularly:
 
 - `config/subscription_provider_profiles.v1.json`: Alibaba Token Plan Personal `qwen3.8-flash` (`routine`/`fast`/`subagent`) and `qwen3.8-max` (`hard`); MiniMax Token Plan `MiniMax-M3`. Neither is an automatically enrolled, application-backend inference route.
 - `config/subscription_harness_bindings.v1.json`: provider-plan bindings to supported Codex/Claude harnesses are individually `SPEC_ONLY` or `BUILT_NOT_PROVEN`, and have separate provider realm, capacity, canary and usage-policy gates.
@@ -35,8 +35,8 @@ Accordingly, a **continuously running GUI navigator cannot simply use these plan
 4. Model preference is exactly `qwen` or `minimax`; it never chooses which provider plan pays. The default preview denies image transfer. Even with explicit opt-in, this route is *authorized only for synthetic offline fixtures* and checks PNG byte size/signature before handing bytes to the injected transport. **The PNG signature cannot prove image provenance or consent**: the caller/owner must independently prove the fixture is synthetic and source-authorized. This opt-in alone does not create provider admission or rights. Real-screen data has no authorized mode here.
 5. Returned provider/model labels are **non-authoritative reporting fields**. Frames must match, model JSON must decode, and the independent existing `VisualAgentSafetyGate` still rejects hallucinated/forbidden elements. Successful review is a **preview**, never a live input permission.
 6. `VisualAgentOfflineInspector.swift` is embedded in the existing Inspector sidebar by `ContentView.swift`. It takes the local current `NSImage`, hashes its **PNG-encoded image bytes** using SHA-256, converts existing OCR-derived `About Me`/`Moments` anchors into safe candidate IDs, displays the text-only prompt, and reviews **pasted JSON** against the current frame and current exclusion rectangles. It has no network/model/input implementation. Loading or capturing a real frame locally is NOT permission to transfer its bytes to any model. A changed frame or exclusion set refuses the prior proposal.
-7. The adapter and gate allow tab proposals only on recognized profile screens and refuse overlays/interstitials/unknown screens, including where OCR falsely sees a plausible tab. A failed action is deduplicated by physical action identity (action + trusted element ID), not raw screenshot digest or model-claimed postcondition; animations or revised explanations cannot reopen the same failed action. Scroll verification consumes the **existing rotating-badge-filtered stable OCR/layout fingerprint** rather than counting a changing clock or nearby-user badge as progress.
-8. `.github/workflows/visual-agent-native-validation.yml` runs the native macOS build and tests. A green early run at `af299451` verified native compile/tests of the first Inspector UI. The latest candidate also generates a purely fictional 420x932 PNG via `scripts/generate-visual-agent-synthetic-fixture.swift` and checks the **real Apple Vision OCR -> screen detector -> safe tab adapter** using `VisualAgentNativeImageTests.swift`. Its new CI outcome must be consumed separately.
+7. The adapter and gate allow tab proposals only on recognized profile screens and only for the exact OCR-grounded `tab-about-me`/`tab-moments` bindings. The model cannot promote avatar/photo/social actions to a trusted tab, invent another destination, or include arbitrary control-label instructions in the prompt. Overlays/interstitials/unknown screens refuse navigation even when OCR falsely sees a plausible tab. A failed action is deduplicated by physical action identity (action + trusted element ID), not raw screenshot digest or model-claimed postcondition; animations or revised explanations cannot reopen the same failed action. Scroll verification consumes the **existing rotating-badge-filtered stable OCR/layout fingerprint** rather than counting a changing clock or nearby-user badge as progress.
+8. `.github/workflows/visual-agent-native-validation.yml` runs the native macOS build and tests. A green early run at `af299451` verified native compile/tests of the first Inspector UI. Native CI at `27133c1c02559e67f155787990bc115e35ca9d1e` **passed** with 227 tests executed (9 optional skips, 0 failures). A later candidate extends the AppKit generator to three fictional 420x932 scenes (profile/advertisement/unknown) and checks actual Apple Vision OCR, screen detection and denial of unsafe controls. The latest CI result, not that earlier green run, must be consumed before this candidate is considered native-tested.
 
 The expected model JSON remains one proposed action:
 
@@ -45,7 +45,7 @@ The expected model JSON remains one proposed action:
   "schema_version": "visual-agent.v1",
   "frame_id": "synthetic-frame-a",
   "action": "tap_element",
-  "element_id": "tab-about",
+  "element_id": "tab-about-me",
   "confidence": 0.94,
   "expectation": { "kind": "screen_kind", "value": "profilePersonalInfo" },
   "rationale": "Open the observed navigation tab"
@@ -56,7 +56,7 @@ Allowed actions: `tap_element`, `scroll_up`, `scroll_down`, `wait`, `pause`. Soc
 
 ## Offline verification and local Codex Sol continuation
 
-Run `sh scripts/test-visual-agent-core.sh` for the isolated compiler/smoke proof. A Swift 6.2.1 Linux isolated run of the updated source reached **21 XCTest passes, zero failures**, plus the offline smoke; exact published Git blob identities must be matched to the tested files at handoff. This is NOT a full native app build, visual UI proof, Fabric model call, or real-device test. The new GitHub macOS CI workflow is the independent native build/test route, and Codex should consume its exact outcome before merge.
+Run `sh scripts/test-visual-agent-core.sh` for the isolated compiler/smoke proof. The latest Swift 6.2.1 Linux isolated suite reached **27 XCTest passes, zero failures** (24 navigation + 3 replay), plus both offline smoke scripts; exact published Git blob identities must be matched to the tested files at handoff. This is NOT a full native app build, visual UI proof, Fabric model call, or real-device test. The new GitHub macOS CI workflow is the independent native build/test route, and Codex should consume its exact outcome before merge.
 
 The next bounded local Codex Sol vertical is **native Inspector acceptance and Fabric-admitted synthetic fixture replay**:
 
@@ -69,3 +69,17 @@ The next bounded local Codex Sol vertical is **native Inspector acceptance and F
 ## Acceptance boundary
 
 Source implementation: `BUILT_NOT_PROVEN` until a complete native app test. The new native Inspector UI is **implemented in source but not installed or visually verified**. The synthetic model transport seam is `PARTIAL`; the actual Fabric-hosted executor and true inference have **not** run here. Native interactive fixture replay: `NOT_BUILT` until the admitted worker proves it. Live AI-driven app automation: `NOT_BUILT` and held behind rights, provider, source-custody and real-device gates. Keep draft PR open; do not merge or advertise autonomous HelloTalk operation from source or isolated smoke alone.
+
+## W2 — Offline replay scoring (added before local Codex handoff)
+
+The repo now contains an executable, purely offline evaluation pipeline:
+
+- `VisualAgentReplayBenchmark.swift` scores recorded proposals against independently authored fixture-oracle actions. It reports denominators, correctness, safe abstentions, unsafe proposals rejected by the gate, wrong approvals, malformed/missing outputs and unsafe approvals. Unknown latency remains null.
+- `VisualAgentReplayBenchmarkTests.swift` covers correct, blocked, missing and spoofed answers, bad case IDs and invalid timings.
+- `scripts/visual-agent-replay-evaluate.swift` and `scripts/test-visual-agent-replay.sh` compile and run the evaluator without a model, desktop action or provider connection.
+- `fixtures/synthetic/visual-agent-replay-cases.json` and `visual-agent-replay-trials.json` are **entirely fictional mock inputs**. Any Qwen/MiniMax names and latency numbers in the sample are fabricated schema demonstrations, NOT provider response receipts, benchmark results or usage.
+- `scripts/generate-visual-agent-synthetic-fixture.swift` generates three fictional screen variants: `profile`, `advertisement`, `unknown`.
+
+No new credential, router, quota ledger, retry plane, Worker identity, or standing inference bridge was created. The CLI reads local JSON and outputs a summary to stdout; verify that external fixture sources contain no real profile content before sharing. Ground-truth labels must be fixed independently before collecting actual model outputs.
+
+**Next native Codex frontier:** Consume newest CI, reconcile Jimu workspace custody, open the read-only Inspector using generated screenshots, then benchmark Qwen/MiniMax *only* through a currently eligible and admitted interactive Fabric route. Capture the exact observed model and latency via existing Fabric receipts. Real-screen transfer, unattended HelloTalk traversal, merge, installation and deployment remain held by independent provider/data/platform/physical-device gates.
