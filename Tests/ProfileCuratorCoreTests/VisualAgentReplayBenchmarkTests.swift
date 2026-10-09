@@ -56,6 +56,32 @@ final class VisualAgentReplayBenchmarkTests: XCTestCase {
         ]))
     }
 
+    func testMissingHardCaseIsIncludedInFixedModelDenominator() throws {
+        let report = try VisualAgentReplayBenchmark().score(cases: cases(), trials: [
+            .init(caseID: "fictional-profile", modelPreference: .qwen,
+                  responseJSON: valid, elapsedMilliseconds: 96)
+        ])
+        XCTAssertEqual(report.summaries.count, 1) // untested MiniMax is not scored as zero
+        XCTAssertEqual(report.summaries[0].modelPreference, .qwen)
+        XCTAssertEqual(report.summaries[0].total, 2) // all oracle cases, not only replies
+        XCTAssertEqual(report.summaries[0].correct, 1)
+        XCTAssertEqual(report.summaries[0].malformedOrMissing, 1)
+        XCTAssertEqual(report.summaries[0].medianObservedLatencyMilliseconds, 96)
+        XCTAssertEqual(report.results.last?.caseID, "fictional-overlay")
+        XCTAssertEqual(report.results.last?.verdict, .missingOutput)
+        XCTAssertNil(report.results.last?.elapsedMilliseconds)
+    }
+
+    func testDuplicateModelCaseAttemptsFailInsteadOfInflatingSuccess() {
+        let same = VisualAgentReplayTrial(caseID: "fictional-profile", modelPreference: .qwen,
+                                          responseJSON: valid)
+        XCTAssertThrowsError(try VisualAgentReplayBenchmark().score(cases: cases(), trials: [same, same])) {
+            guard case VisualAgentReplayError.duplicateTrial = $0 else {
+                return XCTFail("Expected duplicate-trial refusal")
+            }
+        }
+    }
+
     func testModelCannotScoreFakeScreenshotActionAsCorrect() throws {
         let spoof = valid.replacingOccurrences(of: "f-1", with: "f-2")
         let report = try VisualAgentReplayBenchmark().score(cases: cases(), trials: [
