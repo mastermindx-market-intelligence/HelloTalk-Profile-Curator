@@ -95,6 +95,38 @@ final class VisualAgentNavigationTests: XCTestCase {
         XCTAssertEqual(rejected(response), .repeatedFailure)
     }
 
+    func testRotatingLocationBadgeCannotFakeScrollProgress() async {
+        let session = VisualAgentSession()
+        let before = VisualAgentFrame(id: "pixels-1", screenKind: "profileTop",
+                                      visibleText: ["Example City 6:58pm"], elements: [],
+                                      exclusions: [], stableObservationID: "stable-layout")
+        let after = VisualAgentFrame(id: "pixels-2", screenKind: "profileTop",
+                                     visibleText: ["576 People Nearby"], elements: [],
+                                     exclusions: [], stableObservationID: "stable-layout")
+        let intent = VisualAgentProposal(frameID: "pixels-1", action: .scrollDown,
+                                         expectation: .init(kind: .frameChanged),
+                                         confidence: 0.94, rationale: "Scroll to details")
+        _ = await session.propose(intent, on: before)
+        let result = await session.verify(on: after)
+        XCTAssertEqual(result, .replan)
+    }
+
+    func testStableObservationChangeVerifiesScroll() async {
+        let session = VisualAgentSession()
+        let before = VisualAgentFrame(id: "pixels-1", screenKind: "profileTop",
+                                      visibleText: ["Example City 6:58pm"], elements: [],
+                                      exclusions: [], stableObservationID: "stable-layout-1")
+        let after = VisualAgentFrame(id: "pixels-2", screenKind: "profileTop",
+                                     visibleText: ["Example City 6:59pm"], elements: [],
+                                     exclusions: [], stableObservationID: "stable-layout-2")
+        let intent = VisualAgentProposal(frameID: "pixels-1", action: .scrollDown,
+                                         expectation: .init(kind: .frameChanged),
+                                         confidence: 0.94, rationale: "Scroll to details")
+        _ = await session.propose(intent, on: before)
+        let result = await session.verify(on: after)
+        XCTAssertEqual(result, .verified)
+    }
+
     func testMalformedOrOversizedModelResponseRejected() {
         XCTAssertThrowsError(try VisualAgentProposal.decodeJSON(Data(repeating: 0, count: 8193)))
         XCTAssertThrowsError(try VisualAgentProposal.decodeJSON(Data("not json".utf8)))
