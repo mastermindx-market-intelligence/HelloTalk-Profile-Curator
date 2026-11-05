@@ -1,0 +1,52 @@
+name: Jimu W0 native macOS validation
+
+on:
+  push:
+    branches: [sol/jimu-w0-replay-20260906]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jimu-w0-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-validation:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Record actual source and toolchain
+        run: |
+          git rev-parse HEAD
+          sw_vers
+          xcodebuild -version
+          swift --version
+      - name: Focused replay tests
+        run: sh scripts/test-jimu-replay.sh
+      - name: Full existing native test suite
+        run: swift test --jobs 2
+      - name: Build the existing macOS application
+        run: swift build --product ProfileCurator --jobs 2
+      - name: Run actual synthetic replay without actions
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh scripts/jimu-replay.sh fixtures/jimu/synthetic/profile.json fixtures/jimu/synthetic/policy.example.json > "$RUNNER_TEMP/jimu-replay.json"
+          python3 - "$RUNNER_TEMP/jimu-replay.json" <<'PY'
+          import json
+          import sys
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              report = json.load(handle)
+          assert report["age_eligibility"] == "ELIGIBLE_FOR_REVIEW"
+          assert report["engagement_state"] == "DISABLED_OFFLINE"
+          assert report["enabled_actions"] == []
+          assert report["candidate_eligibility"] == "NOT_EVALUATED"
+          assert report["native_capability_state"] == "UNVERIFIED"
+          print("Synthetic CLI proof passed; no device, model, or social action.")
+          PY
