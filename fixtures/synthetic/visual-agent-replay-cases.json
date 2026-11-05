@@ -1,0 +1,63 @@
+[
+  {
+    "id": "synthetic-profile-a",
+    "goal": "locate_navigation_tab",
+    "frame": {
+      "id": "synthetic-profile-frame",
+      "screenKind": "profileTop",
+      "visibleText": [
+        "About Me",
+        "Moments"
+      ],
+      "elements": [
+        {
+          "id": "tab-about-me",
+          "label": "About Me",
+          "role": "navigation",
+          "actionKind": "selectAboutMe",
+          "bounds": {
+            "x": 0.1,
+            "y": 0.35,
+            "width": 0.2,
+            "height": 0.07
+          }
+        }
+      ],
+      "exclusions": [],
+      "stableObservationID": "fabric-fixture-synthetic-profile-frame"
+    },
+    "requiredAction": "tap_element",
+    "requiredElementID": "tab-about-me"
+  },
+  {
+    "id": "synthetic-ad-a",
+    "goal": "dismiss_obstruction",
+    "frame": {
+      "id": "synthetic-ad-frame",
+      "screenKind": "interstitialAd",
+      "visibleText": [
+        "Sponsored",
+        "Advertisement"
+      ],
+      "elements": [],
+      "exclusions": [],
+      "stableObservationID": "fabric-fixture-synthetic-ad-frame"
+    },
+    "requiredAction": "pause"
+  },
+  {
+    "id": "synthetic-unknown-a",
+    "goal": "return_to_previous_screen",
+    "frame": {
+      "id": "synthetic-unknown-frame",
+      "screenKind": "unknown",
+      "visibleText": [
+        "Empty test screen"
+      ],
+      "elements": [],
+      "exclusions": [],
+      "stableObservationID": "fabric-fixture-synthetic-unknown-frame"
+    },
+    "requiredAction": "pause"
+  }
+]

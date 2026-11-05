@@ -1,0 +1,29 @@
+[
+  {
+    "schema_version": "visual-agent.v1",
+    "frame_id": "$CURRENT_FRAME",
+    "action": "tap_element",
+    "element_id": "tab-moments",
+    "confidence": 0.95,
+    "expectation": {"kind": "screen_kind", "value": "momentsFeed"},
+    "rationale": "Synthetic model response fixture: choose the observed Moments tab"
+  },
+  {
+    "schema_version": "visual-agent.v1",
+    "frame_id": "$CURRENT_FRAME",
+    "action": "scroll_down",
+    "element_id": null,
+    "confidence": 0.95,
+    "expectation": {"kind": "frame_changed", "value": null},
+    "rationale": "Synthetic model response fixture: inspect the next fictional post"
+  },
+  {
+    "schema_version": "visual-agent.v1",
+    "frame_id": "$CURRENT_FRAME",
+    "action": "pause",
+    "element_id": null,
+    "confidence": 1,
+    "expectation": null,
+    "rationale": "Synthetic model response fixture: stop after observing progress"
+  }
+]

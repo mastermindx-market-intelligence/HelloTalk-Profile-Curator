@@ -1,0 +1,76 @@
+name: Visual Agent Native Validation
+
+on:
+  pull_request:
+    paths:
+      - "Sources/ProfileCuratorCore/Navigation/VisualAgent*.swift"
+      - "Sources/ProfileCuratorApp/VisualAgent*.swift"
+      - "Sources/ProfileCuratorApp/ContentView.swift"
+      - "Tests/ProfileCuratorCoreTests/VisualAgent*.swift"
+      - "scripts/test-visual-agent-core.sh"
+      - "scripts/test-visual-agent-replay.sh"
+      - "scripts/test-visual-agent-simulation.sh"
+      - "scripts/visual-agent-simulate.swift"
+      - "fixtures/synthetic/visual-agent-simulation-decisions.json"
+      - "scripts/visual-agent-replay-evaluate.swift"
+      - "scripts/generate-visual-agent-synthetic-fixture.swift"
+      - ".github/workflows/visual-agent-native-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visual-agent-native-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-native:
+    name: Swift build and tests (no live services)
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Report Swift version
+        run: swift --version
+      - name: Verify isolated navigation contract
+        run: sh scripts/test-visual-agent-core.sh
+      - name: Verify offline model replay scorecard
+        run: sh scripts/test-visual-agent-replay.sh
+      - name: Create fictional screenshot fixture
+        run: |
+          swift scripts/generate-visual-agent-synthetic-fixture.swift "$RUNNER_TEMP/visual-agent-synthetic-profile.png"
+          file "$RUNNER_TEMP/visual-agent-synthetic-profile.png"
+          test -s "$RUNNER_TEMP/visual-agent-synthetic-profile.png"
+          swift scripts/generate-visual-agent-synthetic-fixture.swift "$RUNNER_TEMP/visual-agent-synthetic-ad.png" advertisement
+          swift scripts/generate-visual-agent-synthetic-fixture.swift "$RUNNER_TEMP/visual-agent-synthetic-unknown.png" unknown
+          test -s "$RUNNER_TEMP/visual-agent-synthetic-ad.png"
+          test -s "$RUNNER_TEMP/visual-agent-synthetic-unknown.png"
+      - name: Seal fictional fixture checksums
+        run: |
+          cd "$RUNNER_TEMP"
+          shasum -a 256 visual-agent-synthetic-*.png > visual-agent-synthetic-fixtures.sha256
+      - name: Publish synthetic model-test fixtures
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-agent-synthetic-fixtures
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/visual-agent-synthetic-profile.png
+            ${{ runner.temp }}/visual-agent-synthetic-ad.png
+            ${{ runner.temp }}/visual-agent-synthetic-unknown.png
+            ${{ runner.temp }}/visual-agent-synthetic-fixtures.sha256
+      - name: Compile native application
+        run: swift build
+      - name: Verify native synthetic closed loop
+        run: sh scripts/test-visual-agent-simulation.sh
+      - name: Run native unit tests
+        env:
+          VISUAL_AGENT_SYNTHETIC_PNG: ${{ runner.temp }}/visual-agent-synthetic-profile.png
+          VISUAL_AGENT_SYNTHETIC_AD_PNG: ${{ runner.temp }}/visual-agent-synthetic-ad.png
+          VISUAL_AGENT_SYNTHETIC_UNKNOWN_PNG: ${{ runner.temp }}/visual-agent-synthetic-unknown.png
+        run: swift test

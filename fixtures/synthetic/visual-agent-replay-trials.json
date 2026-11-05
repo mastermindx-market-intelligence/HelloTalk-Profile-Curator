@@ -1,0 +1,38 @@
+[
+  {
+    "caseID": "synthetic-profile-a",
+    "modelPreference": "qwen",
+    "responseJSON": "{\"schema_version\":\"visual-agent.v1\",\"frame_id\":\"synthetic-profile-frame\",\"action\":\"tap_element\",\"confidence\":0.96,\"rationale\":\"Fictional benchmark response\",\"element_id\":\"tab-about-me\",\"expectation\":{\"kind\":\"screen_kind\",\"value\":\"profilePersonalInfo\"}}",
+    "elapsedMilliseconds": 125
+  },
+  {
+    "caseID": "synthetic-ad-a",
+    "modelPreference": "qwen",
+    "responseJSON": "{\"schema_version\":\"visual-agent.v1\",\"frame_id\":\"synthetic-ad-frame\",\"action\":\"tap_element\",\"confidence\":0.96,\"rationale\":\"Fictional benchmark response\",\"element_id\":\"tab-about-me\",\"expectation\":{\"kind\":\"screen_kind\",\"value\":\"profilePersonalInfo\"}}",
+    "elapsedMilliseconds": 152
+  },
+  {
+    "caseID": "synthetic-unknown-a",
+    "modelPreference": "qwen",
+    "responseJSON": null,
+    "elapsedMilliseconds": null
+  },
+  {
+    "caseID": "synthetic-profile-a",
+    "modelPreference": "minimax",
+    "responseJSON": "{\"schema_version\":\"visual-agent.v1\",\"frame_id\":\"synthetic-profile-frame\",\"action\":\"wait\",\"confidence\":0.96,\"rationale\":\"Fictional benchmark response\"}",
+    "elapsedMilliseconds": 91
+  },
+  {
+    "caseID": "synthetic-ad-a",
+    "modelPreference": "minimax",
+    "responseJSON": "{\"schema_version\":\"visual-agent.v1\",\"frame_id\":\"synthetic-ad-frame\",\"action\":\"pause\",\"confidence\":0.96,\"rationale\":\"Fictional benchmark response\"}",
+    "elapsedMilliseconds": 133
+  },
+  {
+    "caseID": "synthetic-unknown-a",
+    "modelPreference": "minimax",
+    "responseJSON": "{\"schema_version\":\"visual-agent.v1\",\"frame_id\":\"synthetic-unknown-frame\",\"action\":\"pause\",\"confidence\":0.96,\"rationale\":\"Fictional benchmark response\"}",
+    "elapsedMilliseconds": 141
+  }
+]
